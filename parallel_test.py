@@ -59,7 +59,6 @@ def biot_Savart_law(args):
 
     if R_norm == 0:  # Evitar divisiones por cero
         return np.zeros(3)
-
     dB = (A1) * np.cross(dl, R) / (R_norm**3)
     return dB
 
@@ -153,6 +152,6 @@ execution_time = end_time - start_time
 print(f"Tiempo de ejecución p: {execution_time} segundos")
 
 # Save the x_coil_results dictionary using numpy.save
-np.save('x_coil_resultspara.npy', result)
+np.save('x_coil_resultspara1.npy', result)
 # Display results
 print("First results:", result[:5])

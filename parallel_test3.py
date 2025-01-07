@@ -74,21 +74,16 @@ def magnetic_field_square_coil_parallel(P, N, I, coils):
     """
     A1 = (N * MU_0 * I )/ (4 * np.pi)
     with Pool(processes=cpu_count()) as pool:
-        # Preparar argumentos para cada segmento de spire1 y spire2
-        args1 = [(A1, P[0,:], side) for side in coils]
-        args2 = [(A1, P[1,:], side) for side in coils]
-        args3 = [(A1, P[2,:], side) for side in coils]
+        # Preparar argumentos para cada columna de P y calcular en paralelo
+        B_segments = []
+        for i in range(P.shape[1]):  # Itera sobre las columnas de P (0, 1, 2)
+            args = [(A1, P[i, :], side) for side in coils]
+            B_segments.append(pool.map(calculate_field, args))
+        # Sumar las contribuciones de todos los segmentos para cada campo
+        B_results = [np.sum(segments, axis=0) for segments in B_segments]
 
-        # Calcular campos magnéticos en paralelo
-        B1_segments = pool.map(calculate_field, args1)
-        B2_segments = pool.map(calculate_field, args2)
-        B3_segments = pool.map(calculate_field, args3)
-
-    # Sumar las contribuciones de todos los segmentos
-    B1 = np.sum(B1_segments, axis=0)
-    B2 = np.sum(B2_segments, axis=0)
-    B3 = np.sum(B3_segments, axis=0)
-    return B1, B2, B3
+    # Retornar los resultados desglosados
+    return B_results[0], B_results[1], B_results[2]
 
 def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg):
     range_vals = generate_range(coil_params.a, grid_number)
@@ -153,7 +148,7 @@ def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg)
 # Initialize coil parameters
 X_coil = CoilParameters(1.03, 0.85, 36)
 I = 1
-grid_length_size = 0.05
+grid_length_size = 0.1
 num_seg = 1000
 Ax = np.eye(3)
 

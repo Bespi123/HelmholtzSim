@@ -104,7 +104,7 @@ def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg)
     coil['yz'] = {'Y': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
     coil['xz'] = {'X': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
     
-    coil['spire1'], coil['spire2'] = square_spires(A, coil_params.h, coil_params.L, num_seg)
+    coil['spire1'], coil['spire2'] = square_spires(A, coil_params.h, coil_params.a, num_seg)
 
     # Loop through the grid to calculate the magnetic field
     num_iter = len(X) ** 2
