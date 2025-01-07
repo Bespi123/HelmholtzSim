@@ -227,7 +227,7 @@ def coil_simulation_1d(range_vals, A, coil_params, current, num_seg):
 
             # Update progress bar
             current_iter += 1*len(X)
-        progress_bar.update(len(X))
+            progress_bar.update(1)
 
     # Close the progress bar once the simulation is complete
     progress_bar.close()
@@ -260,5 +260,4 @@ print(f"Tiempo de ejecución: {execution_time} segundos")
 
 
 # Save the x_coil_results dictionary using numpy.save
-#np.save('x_coil_results.npy', x_coil_results)
-
+np.save('x_coil_results1.npy', x_coil_results)
