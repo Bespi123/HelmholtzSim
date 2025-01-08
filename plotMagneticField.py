@@ -65,7 +65,5 @@ file_path = '/home/bespi123/git/x_coil_resultspara2.npy'
 # Cargar el archivo
 x_coil_results = np.load(file_path, allow_pickle=True)
 
-# Mostrar los datos
-#print(x_coil_results)
 
 plot_magnetic_field(x_coil_results)

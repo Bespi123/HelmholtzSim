@@ -1,8 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
-import time
+import sys
+
 
 # Define global constants
 mu_0 = 4 * np.pi * 1e-7  # Permeability of free space
@@ -156,28 +155,6 @@ def square_spires(A, h, a, num_seg):
     spire2 = np.einsum('ij,ljk->lik', A, sides - displacement[None, :, :])
 
     return spire1, spire2
-
-def plot_spires(spire1, spire2, color='blue'):
-    """
-    Plots the two spires (coils) in 3D with a single color.
-    """
-    fig = plt.figure(figsize=(10, 8))
-    ax = fig.add_subplot(111, projection='3d')
-
-    # Plot spire1
-    for coords in spire1.values():
-        ax.plot(coords[0], coords[1], coords[2], color=color)
-
-    # Plot spire2
-    for coords in spire2.values():
-        ax.plot(coords[0], coords[1], coords[2], color=color, linestyle='dashed')
-
-    # Add labels
-    ax.set_xlabel("X")
-    ax.set_ylabel("Y")
-    ax.set_zlabel("Z")
-    ax.set_title("Square Spires (Coils) in 3D")
-    plt.show()
    
 
 def coil_simulation_1d(range_vals, A, coil_params, current, num_seg):
@@ -194,70 +171,33 @@ def coil_simulation_1d(range_vals, A, coil_params, current, num_seg):
 
     # Loop through the grid to calculate the magnetic field
     num_iter = len(X) ** 2
-    current_iter = 0
 
     # Initialize a progress bar
     progress_bar = tqdm(total=num_iter, desc="Simulation Progress")
-
     for i in range(len(X)):  # Loop over X values
         for j in range(len(Y)):  # Loop over Y values
             # Evaluate magnetic field in the X-Y plane
             P1 = np.array([X[i, j], Y[i, j], 0])
             B1, _, _ = magnetic_field_square_coil(P1, coil_params.N, current, coil['spire1'], coil['spire2'])
-            coil['xy']['Bx'][i, j] = B1[0]
-            coil['xy']['By'][i, j] = B1[1]
-            coil['xy']['Bz'][i, j] = B1[2]
+            coil['xy']['Bx'][i, j], coil['xy']['By'][i, j], coil['xy']['Bz'][i, j] = B1
             coil['xy']['norB'][i, j] = np.linalg.norm(B1)
 
             # Evaluate magnetic field in the Y-Z plane
             P2 = np.array([0, X[i, j], Y[i, j]])
             B2, _, _ = magnetic_field_square_coil(P2, coil_params.N, current, coil['spire1'], coil['spire2'])
-            coil['yz']['Bx'][i, j] = B2[0]
-            coil['yz']['By'][i, j] = B2[1]
-            coil['yz']['Bz'][i, j] = B2[2]
+            coil['yz']['Bx'][i, j], coil['yz']['By'][i, j], coil['yz']['Bz'][i, j] = B2
             coil['yz']['norB'][i, j] = np.linalg.norm(B2)
 
             # Evaluate magnetic field in the X-Z plane
             P3 = np.array([X[i, j], 0, Y[i, j]])
             B3, _, _ = magnetic_field_square_coil(P3, coil_params.N, current, coil['spire1'], coil['spire2'])
-            coil['xz']['Bx'][i, j] = B3[0]
-            coil['xz']['By'][i, j] = B3[1]
-            coil['xz']['Bz'][i, j] = B3[2]
+            coil['xz']['Bx'][i, j], coil['xz']['By'][i, j], coil['xz']['Bz'][i, j] = B3
             coil['xz']['norB'][i, j] = np.linalg.norm(B3)
-
+            
             # Update progress bar
-            current_iter += 1*len(X)
             progress_bar.update(1)
 
     # Close the progress bar once the simulation is complete
     progress_bar.close()
 
     return coil
-   
-
-# Initialize coil parameters
-Z_coil = CoilParameters(1.03, 0.5, 20)
-Y_coil = CoilParameters(1.02, 0.5, 35)
-X_coil = CoilParameters(1.03, 0.85, 36)
-
-# Current coil simulation
-I = np.array([1,2,3])
-
-# X coil simulation
-grid_length_size = 0.05
-num_seg = 1000
-
-Rangex = generate_range(X_coil.a, grid_length_size)
-Ax = np.eye(3)
-start_time = time.time()
-x_coil_results = coil_simulation_1d(Rangex, Ax, X_coil, I[0], num_seg)
-# Marcar el tiempo de fin
-end_time = time.time()
-
-# Calcular y mostrar el tiempo de ejecución
-execution_time = end_time - start_time
-print(f"Tiempo de ejecución: {execution_time} segundos")
-
-
-# Save the x_coil_results dictionary using numpy.save
-np.save('x_coil_results1.npy', x_coil_results)

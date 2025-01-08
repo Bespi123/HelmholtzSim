@@ -99,7 +99,7 @@ def generate_arguments(grid_number, A, coil_params, current):
         np.stack((X, np.zeros_like(X), Y), axis=-1).reshape(-1, 3)
     ])
 
-    num_seg = 1000
+    num_seg = 100
     coil1, coil2 = square_spires(A, coil_params.h, coil_params.L, num_seg)
 
     differential_1 = np.diff(coil1, axis=2)
@@ -154,4 +154,4 @@ print(f"Tiempo de ejecución p: {execution_time} segundos")
 # Save the x_coil_results dictionary using numpy.save
 np.save('x_coil_resultspara1.npy', result)
 # Display results
-print("First results:", result[:5])
+##print("First results:", result[:5])

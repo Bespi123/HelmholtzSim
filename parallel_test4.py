@@ -48,22 +48,28 @@ def square_spires(A, h, a, num_seg):
 
     return spire1, spire2
 
-def calculate_segment_field(args):
+def calculate_field(args):
+    #A1, P, side = args
+    #B = np.zeros(3)
+    #dl = np.diff(side)  # Elemento de longitud diferencial para el segmento
+
+    #for j in range(dl.shape[1]):
+    #    R = P - side[:,j]
+    #    dB = (A1) * np.cross(dl[:, j], R) / np.linalg.norm(R)**3
+    #    B += dB
+    #return B
     A1, P, side = args
     B = np.zeros(3)
-    dl = np.diff(side)  # Elemento de longitud diferencial para el segmento
-    #Pv = np.tile(P, (side.shape[1], 1)).T
-    #R  = Pv - side
-
-    for j in range(dl.shape[1]):
-        R = P - side[:,j]
-        #dB = (A1) * np.cross(dl[:, j], R[:,j]) / np.linalg.norm(R)**3
-        dB = (A1) * np.cross(dl[:, j], R) / np.linalg.norm(R)**3
-        B += dB
-
+    dl = np.diff(side, axis=2)  # Elemento de longitud diferencial para el segmento
+    
+    for k in range(side.shape[0]):
+      for j in range(dl.shape[2]):
+          R = P - side[k,:,j]
+          dB = (A1) * np.cross(dl[k,:, j], R) / np.linalg.norm(R)**3
+          B += dB
     return B
 
-def magnetic_field_square_coil_parallel(P, N, I, spire1, spire2):
+def magnetic_field_square_coil_parallel(P, N, I, coils, n):
     """
     Calcula el campo magnético en el punto P debido a dos bobinas cuadradas utilizando la Ley de Biot-Savart.
 
@@ -77,23 +83,22 @@ def magnetic_field_square_coil_parallel(P, N, I, spire1, spire2):
         tuple: Campo magnético total (B), campo de spire1 (B1) y campo de spire2 (B2) como arreglos numpy.
     """
     A1 = (N * MU_0 * I )/ (4 * np.pi)
+
     with Pool(processes=cpu_count()) as pool:
-        # Preparar argumentos para cada segmento de spire1 y spire2
-        args1 = [(A1, P, side) for side in spire1]
-        args2 = [(A1, P, side) for side in spire2]
+        # Preparar argumentos para cada columna de P y calcular en paralelo
+        B_segments = []
+        
+        for i in range(P.shape[0]):  # Itera sobre las columnas de P (0, 1, 2)
+            args = [(A1, P[i, :], coils[j:j+n, :, :]) for j in range(0, coils.shape[0], n)]
+            B_segments.append(pool.map(calculate_field, args))
 
-        # Calcular campos magnéticos en paralelo
-        B1_segments = pool.map(calculate_segment_field, args1)
-        B2_segments = pool.map(calculate_segment_field, args2)
+        # Sumar las contribuciones de todos los segmentos para cada campo
+        B_results = [np.sum(segments, axis=0) for segments in B_segments]
 
-    # Sumar las contribuciones de todos los segmentos
-    B1 = np.sum(B1_segments, axis=0)
-    B2 = np.sum(B2_segments, axis=0)
-    B = B1 + B2
+    # Retornar los resultados desglosados
+    return B_results
 
-    return B, B1, B2
-
-def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg):
+def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg, parallel_coils, batch_size):
     range_vals = generate_range(coil_params.a, grid_number)
     # Define the coil geometry and calculate fields
     X, Y = np.meshgrid(range_vals, range_vals)
@@ -104,7 +109,8 @@ def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg)
     coil['yz'] = {'Y': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
     coil['xz'] = {'X': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
     
-    coil['spire1'], coil['spire2'] = square_spires(A, coil_params.h, coil_params.a, num_seg)
+    coil1, coil2 = square_spires(A, coil_params.h, coil_params.a, num_seg)
+    coils = np.concatenate([coil1, coil2], axis=0)
 
     # Loop through the grid to calculate the magnetic field
     num_iter = len(X) ** 2
@@ -113,58 +119,53 @@ def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg)
     # Initialize a progress bar
     progress_bar = tqdm(total=num_iter, desc="Simulation Progress")
 
-    for i in range(len(X)):  # Loop over X values
-        for j in range(len(Y)):  # Loop over Y values
+    points = []
+
+    
+    # Convertir X e Y en arreglos 1D para facilitar la iteración
+    X_flat = X.flatten()
+    Y_flat = Y.flatten()
+
+    m = X.shape[1]  # Número de columnas de X y Y (3 en este caso)
+    
+    # Agrupar `n` elementos de `X` y `Y` en cada iteración
+    for k in range(0, len(X_flat), batch_size):
+        X_batch = X_flat[k: k + batch_size]
+        Y_batch = Y_flat[k: k + batch_size]
+
+        i = k // m  # Calcular el índice de fila i
+        j = k % m   # Calcular el índice de columna j
+
+        # Generar los puntos para los lotes
+        P_batch = np.stack([
+            np.stack([X_batch, Y_batch, np.zeros_like(X_batch)], axis=1),  # P1 X-Y plane
+            np.stack([np.zeros_like(X_batch), X_batch, Y_batch], axis=1),  # P2 Y-Z plane
+            np.stack([X_batch, np.zeros_like(X_batch), Y_batch], axis=1)   # P3 X-Z plane
+        ], axis=1).reshape(-1, 3)    # Forma final: (batch_size, 3, 3)
+        
+        B = magnetic_field_square_coil_parallel(P_batch, coil_params.N, current, coils, parallel_coils)
+
+        for l in range(0, batch_size):
             # Evaluate magnetic field in the X-Y plane
-            P1 = np.array([X[i, j], Y[i, j], 0])
-            B1, _, _ = magnetic_field_square_coil_parallel(P1, coil_params.N, current, coil['spire1'], coil['spire2'])
-            coil['xy']['Bx'][i, j] = B1[0]
-            coil['xy']['By'][i, j] = B1[1]
-            coil['xy']['Bz'][i, j] = B1[2]
-            coil['xy']['norB'][i, j] = np.linalg.norm(B1)
+            if i < coil['xy']['Bx'].shape[0] and j + l < coil['xy']['Bx'].shape[1]:
+                coil['xy']['Bx'][i, j + l], coil['xy']['By'][i, j + l], coil['xy']['Bz'][i, j + l]= B[l*3]
+                coil['xy']['norB'][i, j + l] = np.linalg.norm(B[(l*(3))])
 
             # Evaluate magnetic field in the Y-Z plane
-            P2 = np.array([0, X[i, j], Y[i, j]])
-            B2, _, _ = magnetic_field_square_coil_parallel(P2, coil_params.N, current, coil['spire1'], coil['spire2'])
-            coil['yz']['Bx'][i, j] = B2[0]
-            coil['yz']['By'][i, j] = B2[1]
-            coil['yz']['Bz'][i, j] = B2[2]
-            coil['yz']['norB'][i, j] = np.linalg.norm(B2)
+            if i < coil['xy']['Bx'].shape[0] and j + l < coil['xy']['Bx'].shape[1]:
+                coil['yz']['Bx'][i, j + l], coil['yz']['By'][i, j + l], coil['yz']['Bz'][i, j + l] = B[(l*(3)+1)]
+                coil['yz']['norB'][i, j +l] = np.linalg.norm(B[(l*(3)+1)])
 
             # Evaluate magnetic field in the X-Z plane
-            P3 = np.array([X[i, j], 0, Y[i, j]])
-            B3, _, _ = magnetic_field_square_coil_parallel(P3, coil_params.N, current, coil['spire1'], coil['spire2'])
-            coil['xz']['Bx'][i, j] = B3[0]
-            coil['xz']['By'][i, j] = B3[1]
-            coil['xz']['Bz'][i, j] = B3[2]
-            coil['xz']['norB'][i, j] = np.linalg.norm(B3)
+            if i < coil['xy']['Bx'].shape[0] and j + l < coil['xy']['Bx'].shape[1]:
+                coil['xz']['Bx'][i, j + l], coil['xz']['By'][i, j + l], coil['xz']['Bz'][i, j + l] = B[(l*(3)+2)]
+                coil['xz']['norB'][i, j + l] = np.linalg.norm(B[(l*(3)+2)])
 
-            # Update progress bar
-            current_iter += 1
-            progress_bar.update(1)
+        # Update progress bar
+        current_iter += 1
+        progress_bar.update(batch_size)
 
     # Close the progress bar once the simulation is complete
     progress_bar.close()
 
     return coil
-
-# Initialize coil parameters
-X_coil = CoilParameters(1.03, 0.85, 36)
-I = 1
-grid_length_size = 0.1
-num_seg = 100
-Ax = np.eye(3)
-
-# Generate data and process
-start_time = time.time()
-x_coil_results = coil_simulation_1d_sequential(grid_length_size, Ax, X_coil, I, num_seg)
-end_time = time.time()
-
-# Calcular y mostrar el tiempo de ejecución
-execution_time = end_time - start_time
-print(f"Tiempo de ejecución p: {execution_time} segundos")
-
-# Save the x_coil_results dictionary using numpy.save
-np.save('x_coil_resultspara.npy', x_coil_results)
-# Display results
-print("First results:", x_coil_results[:5])
