@@ -49,14 +49,24 @@ def square_spires(A, h, a, num_seg):
     return spire1, spire2
 
 def calculate_field(args):
+    #A1, P, side = args
+    #B = np.zeros(3)
+    #dl = np.diff(side)  # Elemento de longitud diferencial para el segmento
+
+    #for j in range(dl.shape[1]):
+    #    R = P - side[:,j]
+    #    dB = (A1) * np.cross(dl[:, j], R) / np.linalg.norm(R)**3
+    #    B += dB
+    #return B
     A1, P, side = args
     B = np.zeros(3)
-    dl = np.diff(side)  # Elemento de longitud diferencial para el segmento
-
-    for j in range(dl.shape[1]):
-        R = P - side[:,j]
-        dB = (A1) * np.cross(dl[:, j], R) / np.linalg.norm(R)**3
-        B += dB
+    dl = np.diff(side, axis=2)  # Elemento de longitud diferencial para el segmento
+    
+    for k in range(side.shape[0]):
+      for j in range(dl.shape[2]):
+          R = P - side[k,:,j]
+          dB = (A1) * np.cross(dl[k,:, j], R) / np.linalg.norm(R)**3
+          B += dB
     return B
 
 def magnetic_field_square_coil_parallel(P, N, I, coils):
@@ -73,11 +83,13 @@ def magnetic_field_square_coil_parallel(P, N, I, coils):
         tuple: Campo magnético total (B), campo de spire1 (B1) y campo de spire2 (B2) como arreglos numpy.
     """
     A1 = (N * MU_0 * I )/ (4 * np.pi)
+    n = 2
     with Pool(processes=cpu_count()) as pool:
         # Preparar argumentos para cada columna de P y calcular en paralelo
         B_segments = []
         for i in range(P.shape[1]):  # Itera sobre las columnas de P (0, 1, 2)
-            args = [(A1, P[i, :], side) for side in coils]
+            args = [(A1, P[i, :], coils[j:j+n, :, :]) for j in range(0, coils.shape[0], n)]
+            #args = [(A1, P[i, :], side) for side in coils]
             B_segments.append(pool.map(calculate_field, args))
         # Sumar las contribuciones de todos los segmentos para cada campo
         B_results = [np.sum(segments, axis=0) for segments in B_segments]
