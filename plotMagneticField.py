@@ -1,105 +1,162 @@
+from attr import s
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
+from plotly.subplots import make_subplots
+import pandas as pd
+
+import matplotlib.pyplot as plt
+import numpy as np
 
 def plot_magnetic_field(x_coil_results):
     """
     Plotea los campos magnéticos generados por la simulación en los planos XY, YZ y XZ.
 
     Parameters:
-        coil (dict): Diccionario con los resultados de los campos magnéticos en los planos.
+        x_coil_results (DataFrame or ndarray): Datos de los campos magnéticos, como un DataFrame o un arreglo estructurado.
     """
-    fig, axes = plt.subplots(3, 2, figsize=(12, 18))
+    fig, axes = plt.subplots(3, 1, figsize=(12, 18))
 
-    planes = ['xy', 'yz', 'xz']
     titles = ['Plano XY', 'Plano YZ', 'Plano XZ']
 
-    if isinstance(x_coil_results, np.ndarray):
-        if x_coil_results.size == 1:
-            coil = x_coil_results.item()  # Extraer el diccionario
-    else:
-      coil = x_coil_results
-
-    for idx, plane in enumerate(planes):
+    for ii in range(0, 3):
         # Magnitud del campo en el plano
-        ax1 = axes[idx, 0]
-        norB = coil[plane]['norB']
+        ax1 = axes[ii]
 
-        if plane == 'xy':
-          x = coil[plane]['X']
-          y = coil[plane]['Y']
-        elif plane == 'yz':
-          x = coil[plane]['Y']
-          y = coil[plane]['Z']
+        if ii == 0:
+            # Filtro para el plano XY (Z = 0)
+            xy_plane = x_coil_results[(x_coil_results['Z'] == 0)]
+            x = xy_plane['X'].values
+            y = xy_plane['Y'].values
+            z = xy_plane['Bx'].values
+
+        elif ii == 1:
+            # Filtro para el plano YZ (X = 0)
+            yz_plane = x_coil_results[(x_coil_results['X'] == 0)]
+            x = yz_plane['Y'].values
+            y = yz_plane['Z'].values
+            z = yz_plane['Bx'].values
+
         else:
-          x = coil[plane]['X']
-          y = coil[plane]['Z']
+            # Filtro para el plano XZ (Y = 0)
+            xz_plane = x_coil_results[(x_coil_results['Y'] == 0)]
+            x = xz_plane['X'].values
+            y = xz_plane['Z'].values
+            z = xz_plane['Bx'].values
 
-        im = ax1.contourf(x, y, norB, cmap='viridis', levels=100, alpha=0.7)
+        # Crear la malla 2D de X y Y
+        x_grid, y_grid = np.meshgrid(np.unique(x), np.unique(y))
+
+        # Ahora necesitamos reordenar z para que coincida con la malla 2D
+        # Crear una malla 2D de los puntos y reorganizar los valores de z en función de esa malla
+        z_grid = np.zeros_like(x_grid)  # Crear una matriz de ceros con la misma forma que x_grid
+
+        for i, xi in enumerate(np.unique(x)):
+            for j, yi in enumerate(np.unique(y)):
+                # Seleccionar el valor correspondiente de z para (xi, yi)
+                # Usamos el índice (i, j) para colocar el valor adecuado de z en z_grid
+                idx = np.where((x == xi) & (y == yi))[0]
+                if len(idx) > 0:
+                    z_grid[j, i] = z[idx[0]]  # Asignamos el primer valor de z correspondiente
+
+        # Graficar el contorno
+        im = ax1.contourf(x_grid, y_grid, z_grid, cmap='viridis', levels=100, alpha=0.7)
         fig.colorbar(im, ax=ax1)
-        ax1.set_title(f"{titles[idx]}: Magnitud del campo")
-        ax1.set_xlabel('X' if plane != 'yz' else 'Y')
-        ax1.set_ylabel('Y' if plane == 'xy' else ('Z' if plane == 'yz' else 'X'))
-
-        # Vectores de campo en el plano
-        ax2 = axes[idx, 1]
-        Bx = coil[plane]['Bx']
-        By = coil[plane]['By'] if plane != 'yz' else coil[plane]['Bz']
-
-        # Quitar nans para evitar errores
-        mask = ~np.isnan(Bx) & ~np.isnan(By)
-        X = x[mask]
-        Y = y[mask]
-        U = Bx[mask]
-        V = By[mask]
-
-        ax2.quiver(X, Y, U, V, scale=100, color='blue', alpha=0.6)
-        ax2.set_title(f"{titles[idx]}: Direcciones del campo")
-        ax2.set_xlabel('X' if plane != 'yz' else 'Y')
-        ax2.set_ylabel('Y' if plane == 'xy' else ('Z' if plane == 'yz' else 'X'))
+        ax1.set_title(f"{titles[ii]}: Magnitud del campo")
+        ax1.set_xlabel('X' if ii != 1 else 'Y')
+        ax1.set_ylabel('Y' if ii == 0 else ('Z' if ii == 1 else 'X'))
 
     plt.tight_layout()
     plt.show()
 
-
-def simple_3d_surface_plot(coil):
-    plane = 'xy'
+def simple_3d_surface_plot(x_coil_results):
+    # Define los planos y títulos
+    #lanes = ['xy', 'yz', 'xz']
+    titles = ['Plano XY', 'Plano YZ', 'Plano XZ']
     
-    x = coil[plane]['X']
-    y = coil[plane]['Y']
-    norB = coil[plane]['norB']
-
-    # Generar datos de ejemplo
-    #x = np.linspace(-10, 10, 100)
-    #y = np.linspace(-10, 10, 100)
-    #X, Y = np.meshgrid(x, y)
-    #Z = np.sqrt(X**2 + Y**2)  # Ejemplo de magnitud del campo
-
-    # Crear gráfico de superficie 3D
-    fig = go.Figure()
-
-    fig.add_trace(go.Surface(
-        z=norB,
-        x=x,
-        y=y,
-        colorscale='Viridis',
-        showscale=True
-    ))
-
-    # Configurar layout
-    fig.update_layout(
-        title="Gráfico de Superficie 3D",
-        scene=dict(
-            xaxis_title="X",
-            yaxis_title="Y",
-            zaxis_title="Magnitud"
-        ),
-        height=700,
+    # Crear un subplot con 1 fila y 3 columnas
+    fig = make_subplots(
+        rows=1, cols=3, 
+        subplot_titles=titles, 
+        specs=[[{'type': 'surface'}, {'type': 'surface'}, {'type': 'surface'}]]
     )
 
+    for ii in range(0, 3):
+        # Magnitud del campo en el plano
+        if ii == 0:
+            # Filtro para el plano XY (Z = 0)
+            xy_plane = x_coil_results[(x_coil_results['Z'] == 0)]
+            x = xy_plane['X'].values
+            y = xy_plane['Y'].values
+            z = xy_plane['Bx'].values
+            x_label, y_label = "X", "Y"
+
+        elif ii == 1:
+            # Filtro para el plano YZ (X = 0)
+            yz_plane = x_coil_results[(x_coil_results['X'] == 0)]
+            x = yz_plane['Y'].values
+            y = yz_plane['Z'].values
+            z = yz_plane['Bx'].values
+            x_label, y_label = "Y", "Z"
+
+        else:
+            # Filtro para el plano XZ (Y = 0)
+            xz_plane = x_coil_results[(x_coil_results['Y'] == 0)]
+            x = xz_plane['X'].values
+            y = xz_plane['Z'].values
+            z = xz_plane['Bx'].values
+            x_label, y_label = "X", "Z"
+
+        # Crear la malla 2D de X y Y
+        x_grid, y_grid = np.meshgrid(np.unique(x), np.unique(y))
+
+        # Ahora necesitamos reordenar z para que coincida con la malla 2D
+        # Crear una malla 2D de los puntos y reorganizar los valores de z en función de esa malla
+        z_grid = np.zeros_like(x_grid)  # Crear una matriz de ceros con la misma forma que x_grid
+
+        for i, xi in enumerate(np.unique(x)):
+            for j, yi in enumerate(np.unique(y)):
+                # Seleccionar el valor correspondiente de z para (xi, yi)
+                # Usamos el índice (i, j) para colocar el valor adecuado de z en z_grid
+                idx = np.where((x == xi) & (y == yi))[0]
+                if len(idx) > 0:
+                    z_grid[j, i] = z[idx[0]]  # Asignamos el primer valor de z correspondiente
+
+        # Agregar la traza al subplot correspondiente
+        fig.add_trace(
+            go.Surface(
+                z=z_grid,
+                x=x_grid,
+                y=y_grid,
+                colorscale='Viridis',
+                showscale=False  # Muestra una sola escala de colores
+            ),
+            row=1, col=ii + 1
+        )
+
+        # Configurar los títulos de los ejes del subplot
+        fig.update_scenes(
+            dict(
+                xaxis_title=x_label,
+                yaxis_title=y_label,
+                zaxis_title="Magnitud"
+            ),
+            row=1, col=idx + 1
+        )
+
+    # Configurar el layout general
+    fig.update_layout(
+        title="Gráficos de Superficie 3D - Todos los Planos",
+        height=700,
+        width=1800,  # Ancho ajustado para acomodar 3 gráficos
+        showlegend=False,
+    )
+
+    # Mostrar la figura con todos los subplots
     fig.show()
+
 
 def plot_spires(spire1, spire2, color='black'):
     # Cambiar la forma de spire1 y spire2 de (4, 3, 100) a (4, 100, 3)
@@ -190,10 +247,6 @@ def plot_grid(X, Y, fig):
   )
 
   fig.show()
-#file_path = '/home/bespi123/git/helmholtzCoilsDesigner/x_coil_results.npy'
-#file_path = '/home/bespi123/git/x_coil_resultspara2.npy'
-
-# Cargar el archivo
-#x_coil_results = np.load(file_path, allow_pickle=True)
-
+#x_coil_results = pd.read_csv('/home/iaapp/brayan/Helmholtz/x_coil_results.csv')
 #plot_magnetic_field(x_coil_results)
+#simple_3d_surface_plot(x_coil_results)

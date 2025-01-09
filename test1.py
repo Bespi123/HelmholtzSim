@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from concurrent.futures import ProcessPoolExecutor
 from multiprocessing import cpu_count
 from tqdm import tqdm
+import time
 
 # Define global constants
 MU_0 = 4 * np.pi * 1e-7  # Permeability of free space
@@ -92,7 +93,7 @@ def process_data_in_chunks(data, chunk_size=1000):
     return np.array(results)
 
 
-def generate_arguments(grid_number, A, coil_params, current):
+def generate_arguments(grid_number, A, coil_params, current, num_seg):
     """
     Generates arguments for Biot-Savart law computation.
     """
@@ -105,7 +106,6 @@ def generate_arguments(grid_number, A, coil_params, current):
         np.stack((X, np.zeros_like(X), Y), axis=-1).reshape(-1, 3)
     ])
 
-    num_seg = 1000
     coil1, coil2 = square_spires(A, coil_params.h, coil_params.L, num_seg)
 
     differential_1 = np.diff(coil1, axis=2)
@@ -143,12 +143,19 @@ def plot_3d_points(all_points, coils):
 # Initialize coil parameters
 X_coil = CoilParameters(1.03, 0.85, 36)
 I = 1
-grid_length_size = 0.1
+grid_length_size = 0.05
+num_seg = 1000
 Ax = np.eye(3)
 
 # Generate data and process
-data = generate_arguments(grid_length_size, Ax, coil_params=X_coil, current=I)
+start_time = time.time()
+data = generate_arguments(grid_length_size, Ax, coil_params=X_coil, current=I, num_seg=num_seg)
 result = process_data_in_chunks(data)
+# Marcar el tiempo de fin
+end_time = time.time()
+# Calcular y mostrar el tiempo de ejecución
+execution_time = end_time - start_time
+print(f"Tiempo de ejecución: {execution_time} segundos")
 
 # Display results
 print("First results:", result[:5])

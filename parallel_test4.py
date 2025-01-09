@@ -1,9 +1,7 @@
 import numpy as np
-import matplotlib.pyplot as plt
-from concurrent.futures import ProcessPoolExecutor
+import pandas as pd
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
-import time
 
 # Define global constants
 MU_0 = 4 * np.pi * 1e-7  # Permeability of free space
@@ -146,20 +144,12 @@ def magnetic_field_square_coil_parallel(P, N, I, coils, n):
         B_results = [np.sum(segments, axis=0) for segments in B_segments]
 
     # Retornar los resultados desglosados
-    return B_results
+    return np.array(B_results)
 
 def coil_simulation_1d_sequential(grid_number, coil_params, current, coil1, coil2, parallel_coils, batch_size):
     X, Y = generate_range(coil_params.a, grid_number)
-    # Define the coil geometry and calculate fields
-    #X, Y = np.meshgrid(range_vals, range_vals)
-    # Initialize coil dictionary to store results
-    coil = {}
-    # Define storage for results
-    coil['xy'] = {'X': X, 'Y': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
-    coil['yz'] = {'Y': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
-    coil['xz'] = {'X': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
     
-    #coil1, coil2 = square_spires(A, coil_params.h, coil_params.a, num_seg)
+    result = []
     coils = np.concatenate([coil1, coil2], axis=0)
 
     # Loop through the grid to calculate the magnetic field
@@ -171,20 +161,17 @@ def coil_simulation_1d_sequential(grid_number, coil_params, current, coil1, coil
 
     points = []
 
-    
     # Convertir X e Y en arreglos 1D para facilitar la iteración
     X_flat = X.flatten()
     Y_flat = Y.flatten()
 
+    #print("X_flat: ",X_flat.shape)
     m = X.shape[1]  # Número de columnas de X y Y (3 en este caso)
     
     # Agrupar `n` elementos de `X` y `Y` en cada iteración
     for k in range(0, len(X_flat), batch_size):
         X_batch = X_flat[k: k + batch_size]
         Y_batch = Y_flat[k: k + batch_size]
-
-        i = k // m  # Calcular el índice de fila i
-        j = k % m   # Calcular el índice de columna j
 
         # Generar los puntos para los lotes
         P_batch = np.stack([
@@ -195,27 +182,50 @@ def coil_simulation_1d_sequential(grid_number, coil_params, current, coil1, coil
         
         B = magnetic_field_square_coil_parallel(P_batch, coil_params.N, current, coils, parallel_coils)
 
-        for l in range(0, batch_size):
-            # Evaluate magnetic field in the X-Y plane
-            if i < coil['xy']['Bx'].shape[0] and j + l < coil['xy']['Bx'].shape[1]:
-                coil['xy']['Bx'][i, j + l], coil['xy']['By'][i, j + l], coil['xy']['Bz'][i, j + l]= B[l*3]
-                coil['xy']['norB'][i, j + l] = np.linalg.norm(B[(l*(3))])
-
-            # Evaluate magnetic field in the Y-Z plane
-            if i < coil['xy']['Bx'].shape[0] and j + l < coil['xy']['Bx'].shape[1]:
-                coil['yz']['Bx'][i, j + l], coil['yz']['By'][i, j + l], coil['yz']['Bz'][i, j + l] = B[(l*(3)+1)]
-                coil['yz']['norB'][i, j +l] = np.linalg.norm(B[(l*(3)+1)])
-
-            # Evaluate magnetic field in the X-Z plane
-            if i < coil['xy']['Bx'].shape[0] and j + l < coil['xy']['Bx'].shape[1]:
-                coil['xz']['Bx'][i, j + l], coil['xz']['By'][i, j + l], coil['xz']['Bz'][i, j + l] = B[(l*(3)+2)]
-                coil['xz']['norB'][i, j + l] = np.linalg.norm(B[(l*(3)+2)])
-
+        result += list(zip(P_batch[:, 0], P_batch[:, 1], P_batch[:, 2], B[:,0], B[:,1], B[:,2]))
+        
         # Update progress bar
-        current_iter += 1
+        #current_iter += 1
         progress_bar.update(batch_size)
 
     # Close the progress bar once the simulation is complete
     progress_bar.close()
 
-    return coil
+    return pd.DataFrame(result, columns=['X', 'Y', 'Z', 'Bx', 'By', 'Bz'])
+
+
+# Initialize coil parameters
+#X_coil = CoilParameters(1, 1, 36)
+# Current coil simulation
+#I = np.array([1,2,3])
+#Ax = np.eye(3)
+
+# X coil simulation
+#grid_length_size = 0.1
+#num_seg = 100
+
+##Generar espiras
+#spire1_s, spire2_s = square_spires(Ax, X_coil.h, X_coil.a, num_seg)
+
+# Generar grid
+#X, Y = generate_range(X_coil.a*3/4, grid_length_size)
+
+# Iniciar simulacion
+#start_time = time.time()
+#x_coil_results = coil_simulation_1d_sequential(grid_length_size, X_coil, I[0], spire1_s, spire2_s,4 , 10)
+# Marcar el tiempo de fin
+#end_time = time.time()
+
+# Guardar los resultados en un archivo CSV
+#output_file = '/home/iaapp/brayan/Helmholtz/x_coil_results.csv'
+#x_coil_results.to_csv(output_file, index=False)
+
+#print(f"Resultados guardados en {output_file}")
+
+#print(x_coil_results)
+
+# Calcular y mostrar el tiempo de ejecución
+#execution_time = end_time - start_time
+#print(f"Tiempo de ejecución: {execution_time} segundos")
+
+#hplot.simple_3d_surface_plot(x_coil_results)
