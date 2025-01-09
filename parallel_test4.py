@@ -24,7 +24,11 @@ def generate_range(a, grid_number):
     """
     range_vals = np.arange(-2 * a, 2 * a, grid_number)
     critical_vals = np.array([-2 * a, 0, 2 * a])
-    return np.unique(np.concatenate((range_vals, critical_vals)))
+    range_vals = np.unique(np.concatenate((range_vals, critical_vals)))
+    # Define the coil geometry and calculate fields
+    X, Y = np.meshgrid(range_vals, range_vals)
+
+    return X, Y
 
 def square_spires(A, h, a, num_seg):
     """
@@ -46,6 +50,52 @@ def square_spires(A, h, a, num_seg):
     displacement = np.array([h, 0, 0]).reshape(3, 1)
     spire2 = np.einsum('ij,ljk->lik', A, sides - displacement[None, :, :])
 
+    return spire1, spire2
+
+def circular_spires(A, h, r, num_seg):
+    """
+    Generates coordinates of two circular coils (spirals) in 3D space, divided into four quadrants.
+    
+    Parameters:
+    A (ndarray): A 3x3 transformation matrix.
+    h (float): The height (length along the z-axis) of the spirals.
+    r (float): The radius of the circular spirals.
+    num_seg (int): The number of segments (points) along the spirals.
+    
+    Returns:
+    tuple: Two arrays containing the coordinates of the two spirals, divided into four quadrants.
+    """
+    # Generate the full spiral
+    x_vals = h/2 * np.ones(4*num_seg)  # height values for the spiral
+    theta_vals = np.linspace(0, 2 * np.pi, 4*num_seg)  # angle values for the circular motion
+    
+    # Parametrize the circular spiral in 3D
+    x_coords = x_vals  # x = r * cos(theta)
+    y_coords = r * np.sin(theta_vals)  # y = r * sin(theta)
+    z_coords = r * np.cos(theta_vals)  # z = linear progression along the z-axis
+    
+    # Stack the coordinates to form the spiral shape
+    spiral_coords = np.array([x_coords, y_coords, z_coords]).T  # Shape: (num_seg, 3)
+
+    # Divide the spiral into four quadrants (or "sides")
+    # Each side corresponds to one quadrant of the spiral
+    half_num_seg = num_seg
+
+    sides = np.array([
+        spiral_coords[:half_num_seg],  # First quadrant
+        spiral_coords[half_num_seg:2*half_num_seg],  # Second quadrant
+        spiral_coords[2*half_num_seg:3*half_num_seg],  # Third quadrant
+        spiral_coords[3*half_num_seg:],  # Fourth quadrant
+    ])
+    
+    sides = sides.transpose(0, 2, 1)
+    
+    # Apply transformation to the first spiral (spire1)
+    spire1 = np.einsum('ij,ljk->lik', A, sides)
+    displacement = np.array([h, 0, 0]).reshape(3, 1)
+    spire2 = np.einsum('ij,ljk->lik', A, sides - displacement[None, :, :])
+
+    # Return both spirals
     return spire1, spire2
 
 def calculate_field(args):
@@ -98,10 +148,10 @@ def magnetic_field_square_coil_parallel(P, N, I, coils, n):
     # Retornar los resultados desglosados
     return B_results
 
-def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg, parallel_coils, batch_size):
-    range_vals = generate_range(coil_params.a, grid_number)
+def coil_simulation_1d_sequential(grid_number, coil_params, current, coil1, coil2, parallel_coils, batch_size):
+    X, Y = generate_range(coil_params.a, grid_number)
     # Define the coil geometry and calculate fields
-    X, Y = np.meshgrid(range_vals, range_vals)
+    #X, Y = np.meshgrid(range_vals, range_vals)
     # Initialize coil dictionary to store results
     coil = {}
     # Define storage for results
@@ -109,7 +159,7 @@ def coil_simulation_1d_sequential(grid_number, A, coil_params, current, num_seg,
     coil['yz'] = {'Y': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
     coil['xz'] = {'X': X, 'Z': Y, 'Bx': np.nan * np.ones_like(X), 'By': np.nan * np.ones_like(Y), 'Bz': np.nan * np.ones_like(Y), 'norB': np.nan * np.ones_like(Y)}
     
-    coil1, coil2 = square_spires(A, coil_params.h, coil_params.a, num_seg)
+    #coil1, coil2 = square_spires(A, coil_params.h, coil_params.a, num_seg)
     coils = np.concatenate([coil1, coil2], axis=0)
 
     # Loop through the grid to calculate the magnetic field
