@@ -65,7 +65,7 @@ def circular_spires(A, h, r, num_seg):
     """
     # Generate the full spiral
     x_vals = h/2 * np.ones(4*num_seg)  # height values for the spiral
-    theta_vals = np.linspace(0, 2 * np.pi, 4*num_seg)  # angle values for the circular motion
+    theta_vals = 2 * np.pi - np.linspace(0, 2 * np.pi, 4*num_seg)  # angle values for the circular motion
     
     # Parametrize the circular spiral in 3D
     x_coords = x_vals  # x = r * cos(theta)
