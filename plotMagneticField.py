@@ -1,14 +1,10 @@
-from attr import s
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from plotly.subplots import make_subplots
-import pandas as pd
 
-import matplotlib.pyplot as plt
-import numpy as np
 
 def plot_magnetic_field(x_coil_results):
     """
