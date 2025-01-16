@@ -1,3 +1,4 @@
+# Import dependencies
 import numpy as np
 import pandas as pd
 from multiprocessing import Pool, cpu_count
@@ -9,223 +10,264 @@ MU_0 = 4 * np.pi * 1e-7  # Permeability of free space
 # Coil parameters definition
 class CoilParameters:
     def __init__(self, length, height, turns):
+        # Initialize the length of the Helmholtz testbed side
         self.L = np.array(length)   # Helmholtz testbed-length side
+        # Calculate and store half the Helmholtz testbed length side
         self.a = self.L / 2         # Half Helmholtz testbed length side
+        # Initialize the separation between Helmholtz coils
         self.h = np.array(height)   # Separation among Helmholtz coils
+        # Initialize the number of turns in the Helmholtz coils
         self.N = np.array(turns)    # Number of turns in Helmholtz coils
+
 
 # Program functions
 def generate_range(a, grid_number):
     """
     Generates a sorted NumPy array of values ranging from -2*a to 2*a with a specified step size.
     Includes critical points -2*a, 0, and 2*a.
+    
+    Parameters:
+        a (float): Half the Helmholtz testbed length side.
+        grid_number (float): Step size for generating the range of values.
+    
+    Returns:
+        X, Y (numpy.ndarray): Meshgrid arrays representing the x and y coordinates for the range.
     """
+    # Generate values from -2*a to 2*a with a step size of grid_number
     range_vals = np.arange(-2 * a, 2 * a, grid_number)
+    
+    # Ensure critical points (-2*a, 0, and 2*a) are included in the range
     critical_vals = np.array([-2 * a, 0, 2 * a])
+    
+    # Combine the range values and critical points, ensuring uniqueness and sorting
     range_vals = np.unique(np.concatenate((range_vals, critical_vals)))
-    # Define the coil geometry and calculate fields
+    
+    # Create a meshgrid for defining the coil geometry and subsequent field calculations
     X, Y = np.meshgrid(range_vals, range_vals)
-
+    
     return X, Y
+
 
 def square_spires(A, h, a, num_seg):
     """
     Generates coordinates of two square coils in 3D space.
+
+    Parameters:
+        A (numpy.ndarray): Transformation matrix to rotate or transform the coil's coordinates.
+        h (float): Separation between the two coils.
+        a (float): Half the length of the square coil side.
+        num_seg (int): Number of segments per side of the square.
+
+    Returns:
+        spire1, spire2 (numpy.ndarray): Arrays containing the 3D coordinates of the two square coils.
     """
+    # Calculate half the separation distance between the two coils
     h_half = h / 2
+    
+    # Half the length of the square side
     L_half = a
+    
+    # Generate evenly spaced points for the y and z coordinates along the square sides
     y_coords = np.linspace(L_half, -L_half, num_seg)
     z_coords = np.linspace(-L_half, L_half, num_seg)
-
+    
+    # Define the 3D coordinates of the four sides of a square coil
     sides = np.array([
-        [h_half * np.ones(num_seg), y_coords, L_half * np.ones(num_seg)],  # Side 1
-        [h_half * np.ones(num_seg), -L_half * np.ones(num_seg), y_coords], # Side 2
-        [h_half * np.ones(num_seg), z_coords, -L_half * np.ones(num_seg)], # Side 3
-        [h_half * np.ones(num_seg), L_half * np.ones(num_seg), z_coords]   # Side 4
+        [h_half * np.ones(num_seg), y_coords, L_half * np.ones(num_seg)],  # Side 1: top edge
+        [h_half * np.ones(num_seg), -L_half * np.ones(num_seg), y_coords], # Side 2: right edge
+        [h_half * np.ones(num_seg), z_coords, -L_half * np.ones(num_seg)], # Side 3: bottom edge
+        [h_half * np.ones(num_seg), L_half * np.ones(num_seg), z_coords]   # Side 4: left edge
     ])
-
+    
+    # Transform the coordinates of the first coil using the matrix A
     spire1 = np.einsum('ij,ljk->lik', A, sides)
+    
+    # Create a displacement vector to position the second coil
     displacement = np.array([h, 0, 0]).reshape(3, 1)
+    
+    # Transform the coordinates of the second coil using the matrix A and apply the displacement
     spire2 = np.einsum('ij,ljk->lik', A, sides - displacement[None, :, :])
-
+    
+    # Return the 3D coordinates of both square coils
     return spire1, spire2
+
 
 def circular_spires(A, h, r, num_seg):
     """
     Generates coordinates of two circular coils (spirals) in 3D space, divided into four quadrants.
     
     Parameters:
-    A (ndarray): A 3x3 transformation matrix.
-    h (float): The height (length along the z-axis) of the spirals.
-    r (float): The radius of the circular spirals.
-    num_seg (int): The number of segments (points) along the spirals.
+        A (ndarray): A 3x3 transformation matrix to rotate or transform the spiral coordinates.
+        h (float): The height (length along the z-axis) of the spirals.
+        r (float): The radius of the circular spirals.
+        num_seg (int): The number of segments (points) for each quarter of the spiral.
     
     Returns:
-    tuple: Two arrays containing the coordinates of the two spirals, divided into four quadrants.
+        tuple: Two arrays containing the coordinates of the two spirals, divided into four quadrants.
     """
-    # Generate the full spiral
-    x_vals = h/2 * np.ones(4*num_seg)  # height values for the spiral
-    theta_vals = 2 * np.pi - np.linspace(0, 2 * np.pi, 4*num_seg)  # angle values for the circular motion
+    # Generate height values for the spiral along the x-axis
+    x_vals = h / 2 * np.ones(4 * num_seg)  # Constant height for all points
     
-    # Parametrize the circular spiral in 3D
-    x_coords = x_vals  # x = r * cos(theta)
-    y_coords = r * np.sin(theta_vals)  # y = r * sin(theta)
-    z_coords = r * np.cos(theta_vals)  # z = linear progression along the z-axis
+    # Generate angle values for the circular motion (theta)
+    theta_vals = 2 * np.pi - np.linspace(0, 2 * np.pi, 4 * num_seg)  # Full circle (360°)
     
-    # Stack the coordinates to form the spiral shape
-    spiral_coords = np.array([x_coords, y_coords, z_coords]).T  # Shape: (num_seg, 3)
-
-    # Divide the spiral into four quadrants (or "sides")
-    # Each side corresponds to one quadrant of the spiral
+    # Parametrize the circular spiral in 3D space
+    x_coords = x_vals                    # x remains constant
+    y_coords = r * np.sin(theta_vals)    # y = r * sin(theta), circular pattern in the y-direction
+    z_coords = r * np.cos(theta_vals)    # z = r * cos(theta), circular pattern in the z-direction
+    
+    # Stack the coordinates into a 2D array (shape: [4*num_seg, 3])
+    spiral_coords = np.array([x_coords, y_coords, z_coords]).T
+    
+    # Divide the spiral into four quadrants, each containing `num_seg` points
     half_num_seg = num_seg
-
     sides = np.array([
-        spiral_coords[:half_num_seg],  # First quadrant
+        spiral_coords[:half_num_seg],           # First quadrant
         spiral_coords[half_num_seg:2*half_num_seg],  # Second quadrant
         spiral_coords[2*half_num_seg:3*half_num_seg],  # Third quadrant
-        spiral_coords[3*half_num_seg:],  # Fourth quadrant
+        spiral_coords[3*half_num_seg:],        # Fourth quadrant
     ])
     
+    # Transpose the sides to match the required shape for transformation (shape: [4, 3, num_seg])
     sides = sides.transpose(0, 2, 1)
     
-    # Apply transformation to the first spiral (spire1)
+    # Apply the transformation matrix A to the coordinates of the first spiral (spire1)
     spire1 = np.einsum('ij,ljk->lik', A, sides)
+    
+    # Define the displacement vector to position the second spiral
     displacement = np.array([h, 0, 0]).reshape(3, 1)
+    
+    # Apply the transformation and displacement to define the second spiral (spire2)
     spire2 = np.einsum('ij,ljk->lik', A, sides - displacement[None, :, :])
-
-    # Return both spirals
+    
+    # Return the coordinates of both spirals
     return spire1, spire2
 
-def calculate_field(args):
-    #A1, P, side = args
-    #B = np.zeros(3)
-    #dl = np.diff(side)  # Elemento de longitud diferencial para el segmento
 
-    #for j in range(dl.shape[1]):
-    #    R = P - side[:,j]
-    #    dB = (A1) * np.cross(dl[:, j], R) / np.linalg.norm(R)**3
-    #    B += dB
-    #return B
-    A1, P, side = args
-    B = np.zeros(3)
-    dl = np.diff(side, axis=2)  # Elemento de longitud diferencial para el segmento
+def calculate_field(args):
+    """
+    Calculates the magnetic field at a given point due to a current-carrying coil.
     
+    Parameters:
+        args (tuple): A tuple containing:
+            A1 (float): Proportionality constant for the magnetic field (e.g., permeability times current).
+            P (numpy.ndarray): The point in 3D space where the magnetic field is calculated (shape: (3,)).
+            side (numpy.ndarray): 3D coordinates of the coil segments (shape: (num_sides, 3, num_points)).
+    
+    Returns:
+        numpy.ndarray: The magnetic field vector (shape: (3,)).
+    """
+    A1, P, side = args
+    B = np.zeros(3)  # Initialize the magnetic field vector to zero
+    dl = np.diff(side, axis=2)  # Differential length elements for each segment of the coil
+    
+    # Loop over each side of the coil
     for k in range(side.shape[0]):
-      for j in range(dl.shape[2]):
-          R = P - side[k,:,j]
-          dB = (A1) * np.cross(dl[k,:, j], R) / np.linalg.norm(R)**3
-          B += dB
+        # Loop over each differential length element in the current side
+        for j in range(dl.shape[2]):
+            # Vector from the differential element to the point of interest
+            R = P - side[k, :, j]
+            
+            # Calculate the contribution to the magnetic field (Biot-Savart Law)
+            dB = (A1) * np.cross(dl[k, :, j], R) / np.linalg.norm(R)**3
+            
+            # Accumulate the contribution to the total magnetic field
+            B += dB
+    
     return B
+
 
 def magnetic_field_square_coil_parallel(P, N, I, coils, n):
     """
-    Calcula el campo magnético en el punto P debido a dos bobinas cuadradas utilizando la Ley de Biot-Savart.
+    Calculates the magnetic field at observation points P due to two square coils
+    using the Biot-Savart Law.
 
-    Parámetros:
-        P (np.ndarray): Punto de observación donde se calcula el campo magnético (vector 3x1).
-        N (int): Número de vueltas en cada bobina.
-        I (float): Corriente que fluye a través de cada bobina.
-        spire1, spire2 (dict): Diccionarios que representan cada bobina, con campos para las coordenadas 3D de los segmentos.
+    Parameters:
+        P (np.ndarray): Observation points where the magnetic field is calculated (matrix of size m x 3).
+        N (int): Number of turns in each coil.
+        I (float): Current flowing through each coil.
+        coils (np.ndarray): 3D coordinates of the coil segments (array of size num_seg x 3 x num_points).
+        n (int): Number of segments per coil to process simultaneously.
 
-    Retorna:
-        tuple: Campo magnético total (B), campo de spire1 (B1) y campo de spire2 (B2) como arreglos numpy.
+    Returns:
+        np.ndarray: Total magnetic field (B) calculated at each observation point P (matrix of size m x 3).
     """
-    A1 = (N * MU_0 * I )/ (4 * np.pi)
+    # Proportionality constant from the Biot-Savart Law
+    A1 = (N * MU_0 * I) / (4 * np.pi)
 
+    # Use multiprocessing to calculate in parallel
     with Pool(processes=cpu_count()) as pool:
-        # Preparar argumentos para cada columna de P y calcular en paralelo
-        B_segments = []
+        B_segments = []  # List to store magnetic field results for each observation point
         
-        for i in range(P.shape[0]):  # Itera sobre las columnas de P (0, 1, 2)
+        # Iterate over each observation point in P
+        for i in range(P.shape[0]):  # P has m rows, each representing a point in space
+            # Prepare arguments for each segment of the coil
             args = [(A1, P[i, :], coils[j:j+n, :, :]) for j in range(0, coils.shape[0], n)]
+            
+            # Compute the magnetic field in parallel for coil segments
             B_segments.append(pool.map(calculate_field, args))
 
-        # Sumar las contribuciones de todos los segmentos para cada campo
+        # Sum contributions from all segments to get the total field at each point P
         B_results = [np.sum(segments, axis=0) for segments in B_segments]
 
-    # Retornar los resultados desglosados
+    # Return results as a NumPy array
     return np.array(B_results)
 
+
 def coil_simulation_1d_sequential(grid_number, coil_params, current, coil1, coil2, parallel_coils, batch_size):
+    """
+    Simulates the magnetic field generated by two coils on a 1D grid in three orthogonal planes.
+
+    Parameters:
+        grid_number (float): Step size for generating the grid.
+        coil_params (CoilParameters): Parameters of the coils, including length, height, and turns.
+        current (float): Current flowing through the coils.
+        coil1, coil2 (np.ndarray): 3D coordinates of the two coils (arrays of shape num_segments x 3 x num_points).
+        parallel_coils (int): Number of coil segments processed simultaneously.
+        batch_size (int): Number of points to process in each batch.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing the grid coordinates and magnetic field components.
+                      Columns: ['X', 'Y', 'Z', 'Bx', 'By', 'Bz'].
+    """
+    # Generate the X-Y grid based on the coil dimensions and grid step size
     X, Y = generate_range(coil_params.a, grid_number)
     
-    result = []
-    coils = np.concatenate([coil1, coil2], axis=0)
+    result = []  # List to store the simulation results
+    coils = np.concatenate([coil1, coil2], axis=0)  # Combine both coils into a single array
 
-    # Loop through the grid to calculate the magnetic field
+    # Calculate the total number of iterations for progress tracking
     num_iter = len(X) ** 2
-    current_iter = 0
+    progress_bar = tqdm(total=num_iter, desc="Simulation Progress")  # Initialize a progress bar
 
-    # Initialize a progress bar
-    progress_bar = tqdm(total=num_iter, desc="Simulation Progress")
-
-    points = []
-
-    # Convertir X e Y en arreglos 1D para facilitar la iteración
+    # Flatten X and Y arrays for easier iteration over the grid points
     X_flat = X.flatten()
     Y_flat = Y.flatten()
+    m = X.shape[1]  # Number of columns in X and Y (3 in this example)
 
-    #print("X_flat: ",X_flat.shape)
-    m = X.shape[1]  # Número de columnas de X y Y (3 en este caso)
-    
-    # Agrupar `n` elementos de `X` y `Y` en cada iteración
+    # Iterate over the grid points in batches
     for k in range(0, len(X_flat), batch_size):
-        X_batch = X_flat[k: k + batch_size]
-        Y_batch = Y_flat[k: k + batch_size]
+        X_batch = X_flat[k: k + batch_size]  # Batch of X coordinates
+        Y_batch = Y_flat[k: k + batch_size]  # Batch of Y coordinates
 
-        # Generar los puntos para los lotes
+        # Generate 3D points for each batch in three orthogonal planes
         P_batch = np.stack([
-            np.stack([X_batch, Y_batch, np.zeros_like(X_batch)], axis=1),  # P1 X-Y plane
-            np.stack([np.zeros_like(X_batch), X_batch, Y_batch], axis=1),  # P2 Y-Z plane
-            np.stack([X_batch, np.zeros_like(X_batch), Y_batch], axis=1)   # P3 X-Z plane
-        ], axis=1).reshape(-1, 3)    # Forma final: (batch_size, 3, 3)
-        
+            np.stack([X_batch, Y_batch, np.zeros_like(X_batch)], axis=1),  # P1: X-Y plane
+            np.stack([np.zeros_like(X_batch), X_batch, Y_batch], axis=1),  # P2: Y-Z plane
+            np.stack([X_batch, np.zeros_like(X_batch), Y_batch], axis=1)   # P3: X-Z plane
+        ], axis=1).reshape(-1, 3)  # Final shape: (batch_size * 3, 3)
+
+        # Calculate the magnetic field at the batch points
         B = magnetic_field_square_coil_parallel(P_batch, coil_params.N, current, coils, parallel_coils)
 
-        result += list(zip(P_batch[:, 0], P_batch[:, 1], P_batch[:, 2], B[:,0], B[:,1], B[:,2]))
-        
-        # Update progress bar
-        #current_iter += 1
+        # Store the results in the format (X, Y, Z, Bx, By, Bz)
+        result += list(zip(P_batch[:, 0], P_batch[:, 1], P_batch[:, 2], B[:, 0], B[:, 1], B[:, 2]))
+
+        # Update the progress bar
         progress_bar.update(batch_size)
 
     # Close the progress bar once the simulation is complete
     progress_bar.close()
 
+    # Convert the results to a DataFrame for easier data manipulation and visualization
     return pd.DataFrame(result, columns=['X', 'Y', 'Z', 'Bx', 'By', 'Bz'])
-
-
-# Initialize coil parameters
-#X_coil = CoilParameters(1, 1, 36)
-# Current coil simulation
-#I = np.array([1,2,3])
-#Ax = np.eye(3)
-
-# X coil simulation
-#grid_length_size = 0.1
-#num_seg = 100
-
-##Generar espiras
-#spire1_s, spire2_s = square_spires(Ax, X_coil.h, X_coil.a, num_seg)
-
-# Generar grid
-#X, Y = generate_range(X_coil.a*3/4, grid_length_size)
-
-# Iniciar simulacion
-#start_time = time.time()
-#x_coil_results = coil_simulation_1d_sequential(grid_length_size, X_coil, I[0], spire1_s, spire2_s,4 , 10)
-# Marcar el tiempo de fin
-#end_time = time.time()
-
-# Guardar los resultados en un archivo CSV
-#output_file = '/home/iaapp/brayan/Helmholtz/x_coil_results.csv'
-#x_coil_results.to_csv(output_file, index=False)
-
-#print(f"Resultados guardados en {output_file}")
-
-#print(x_coil_results)
-
-# Calcular y mostrar el tiempo de ejecución
-#execution_time = end_time - start_time
-#print(f"Tiempo de ejecución: {execution_time} segundos")
-
-#hplot.simple_3d_surface_plot(x_coil_results)
