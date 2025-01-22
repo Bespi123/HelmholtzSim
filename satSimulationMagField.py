@@ -105,3 +105,34 @@ def simulate_satellite(start_date, end_date, time_step):
 
     # Convert results to DataFrame
     return pd.DataFrame(results)
+
+def calculate_max_min_values(df, select):
+    """
+    Calculate and print the maximum and minimum values for specified columns in a DataFrame.
+
+    Parameters:
+    - df (pd.DataFrame): The DataFrame containing the data.
+    - columns (list of str): List of column names to process.
+
+    Returns:
+    - results (dict): Dictionary containing max and min values for each column.
+    """
+    results = {}
+
+    if select == 'ECI':
+        columns = ['Bx ECI (nT)', 'By ECI (nT)', 'Bz ECI (nT)']
+    elif select == 'ECEF':
+        columns = ['Bx ECEF (nT)', 'By ECEF (nT)', 'Bx ECEF (nT)']
+    elif select == 'NED':
+        columns = ['B N', 'B E', 'B D']
+    else :
+       print('Not supported reference frame')
+    
+    for col in columns:
+        max_value = df[col].max()
+        min_value = df[col].min()
+        
+        results[col] = {"max": max_value, "min": min_value}
+        print(f"Max Value {col}: {max_value} nT, Min Value {col}: {min_value} nT")
+    
+    return results

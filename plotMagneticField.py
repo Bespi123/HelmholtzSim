@@ -154,47 +154,51 @@ def simple_3d_surface_plot(x_coil_results):
     fig.show()
 
 
-def plot_spires(spire1, spire2, color='black'):
-    # Cambiar la forma de spire1 y spire2 de (4, 3, 100) a (4, 100, 3)
-    spire1 = spire1.transpose(0, 2, 1)  # Cambiar la forma a (4, 100, 3)
-    spire2 = spire2.transpose(0, 2, 1)  # Cambiar la forma a (4, 100, 3)
+def plot_spires(fig, spire1, spire2, color='black'):
+    """
+    Add spires to an existing Plotly figure or create a new one if `fig` is None.
     
-    # Aplana los arrays para tener una forma (num_puntos, 3) por espiral
-    spire1_flat = spire1.reshape(-1, 3)  # Aplana a forma (400, 3)
-    spire2_flat = spire2.reshape(-1, 3)  # Aplana a forma (400, 3)
+    Parameters:
+    - fig (go.Figure or None): Existing Plotly figure to update. Creates a new one if None.
+    - spire1, spire2 (numpy.ndarray): Arrays representing the spires (shape: (4, 3, 100)).
+    - color (str): Color of the spires.
+
+    Returns:
+    - fig (go.Figure): Updated Plotly figure.
+    """
+    # Change the shape of spire1 and spire2 from (4, 3, 100) to (4, 100, 3)
+    spire1 = spire1.transpose(0, 2, 1)  # Shape: (4, 100, 3)
+    spire2 = spire2.transpose(0, 2, 1)  # Shape: (4, 100, 3)
     
-    # Crear el gráfico interactivo
-    trace1 = go.Scatter3d(
+    # Flatten the arrays to (num_points, 3) per spire
+    spire1_flat = spire1.reshape(-1, 3)  # Flatten to (400, 3)
+    spire2_flat = spire2.reshape(-1, 3)  # Flatten to (400, 3)
+    
+    # Create a new figure if `fig` is None
+    if fig is None:
+        fig = go.Figure()
+    
+    # Add traces for spire1 and spire2
+    fig.add_trace(go.Scatter3d(
         x=spire1_flat[:, 0], 
         y=spire1_flat[:, 1], 
         z=spire1_flat[:, 2], 
         mode='lines', 
         line=dict(color=color, width=4),
         name='Spire 1'
-    )
+    ))
     
-    trace2 = go.Scatter3d(
+    fig.add_trace(go.Scatter3d(
         x=spire2_flat[:, 0], 
         y=spire2_flat[:, 1], 
         z=spire2_flat[:, 2], 
         mode='lines', 
         line=dict(color=color, width=4),
         name='Spire 2'
-    )
-    
-    layout = go.Layout(
-        scene=dict(
-            xaxis=dict(title='X'),
-            yaxis=dict(title='Y'),
-            zaxis=dict(title='Z')
-        ),
-        title="Helmholtz Coils"
-    )
+    ))
 
-    fig = go.Figure(data=[trace1, trace2], layout=layout)
-    
-    fig.show()
     return fig
+
 
 def plot_grid(X, Y, fig):
   P1_points = np.stack((X, Y, np.zeros_like(X)), axis=-1)  # X-Y plane
@@ -243,6 +247,128 @@ def plot_grid(X, Y, fig):
   )
 
   fig.show()
-#x_coil_results = pd.read_csv('/home/iaapp/brayan/Helmholtz/x_coil_results.csv')
-#plot_magnetic_field(x_coil_results)
-#simple_3d_surface_plot(x_coil_results)
+
+# Function to create a sphere representing the Earth
+def create_earth(radius=6371.0, resolution=50):
+    # Sphere generation
+    phi = np.linspace(0, 2 * np.pi, resolution)
+    theta = np.linspace(0, np.pi, resolution)
+    x = radius * np.outer(np.cos(phi), np.sin(theta))
+    y = radius * np.outer(np.sin(phi), np.sin(theta))
+    z = radius * np.outer(np.ones_like(phi), np.cos(theta))
+    return x.flatten(), y.flatten(), z.flatten()
+
+def plot_orbit(df, select):
+    # Generate Earth data
+    earth_x, earth_y, earth_z = create_earth()
+
+    if select == 'ECI':
+        # Satellite trajectory data
+        coord_x = df["ECI X (km)"].values
+        coord_y = df["ECI Y (km)"].values
+        coord_z = df["ECI Z (km)"].values
+        label = 'ECI'
+    elif select == 'ECEF':
+        coord_x = df["ECEF X (km)"].values
+        coord_y = df["ECEF Y (km)"].values
+        coord_z = df["ECEF Z (km)"].values
+        label = 'ECEF'
+    else:
+        print('Coordinates not supported.')
+
+    # Create a 3D plot
+    fig = go.Figure()
+
+    # Add Earth to the plot
+    fig.add_trace(go.Surface(
+        x=earth_x.reshape(50, 50),
+        y=earth_y.reshape(50, 50),
+        z=earth_z.reshape(50, 50),
+        colorscale="Blues",
+        opacity=0.5,
+        name="Earth",
+        showscale=False
+    ))
+
+    # Add satellite trajectory
+    fig.add_trace(go.Scatter3d(
+        x=coord_x,
+        y=coord_y,
+        z=coord_z,
+        mode='lines',
+        line=dict(color='red', width=4),
+        name='Satellite Path'
+    ))
+
+    # Update layout for better visualization
+    fig.update_layout(
+        scene=dict(
+        xaxis_title="X (km)",
+        yaxis_title="Y (km)",
+        zaxis_title="Z (km)",
+        aspectmode="data"  # Equal aspect ratio
+    ),
+    title = f"Satellite Trajectory in {label} Coordinates with Earth",
+    showlegend=True
+    )
+
+    # Show the plot
+    fig.show()
+
+def plot_magField_time(df, select):
+    """
+    Plot the magnetic field components over time for a given coordinate system.
+    
+    Parameters:
+    - df (pd.DataFrame): DataFrame containing magnetic field data.
+    - select (str): Coordinate system ('ECI', 'ECEF', or 'NED').
+
+    Returns:
+    - None: Displays the plot.
+    """
+    # Create a figure with 3 subplots (one for each component)
+    fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+
+    if select == 'ECI':
+        Bx_column = 'Bx ECI (nT)'
+        By_column = 'By ECI (nT)'
+        Bz_column = 'Bz ECI (nT)'
+        label = 'ECI'
+    elif select == 'ECEF':
+        Bx_column = 'Bx ECEF (nT)'
+        By_column = 'By ECEF (nT)'
+        Bz_column = 'Bz ECEF (nT)'
+        label = 'ECEF'
+    elif select == 'NED':
+        Bx_column = 'B N'
+        By_column = 'B E'
+        Bz_column = 'B D'
+        label = 'NED'
+    else:
+        print('Not supported coordinate frame.')
+        return  # Exit the function if an unsupported coordinate frame is provided
+
+    # Plot each magnetic field component
+    axs[0].plot(df["Time (UTC)"], df[Bx_column], color="red")
+    axs[0].set_title(f"Component Bx in {label} coordinates (nT)")
+    axs[0].set_ylabel(Bx_column)
+
+    axs[1].plot(df["Time (UTC)"], df[By_column], color="blue")
+    axs[1].set_title(f"Component By in {label} coordinates (nT)")
+    axs[1].set_ylabel(By_column)
+
+    axs[2].plot(df["Time (UTC)"], df[Bz_column], color="green")
+    axs[2].set_title(f"Component Bz in {label} coordinates (nT)")
+    axs[2].set_ylabel(Bz_column)
+    axs[2].set_xlabel("Time (UTC)")
+
+    # Reduce the number of ticks on the x-axis
+    for ax in axs:
+        ax.tick_params(axis='x', which='both', labelrotation=45)
+        ax.set_xticks(ax.get_xticks()[::10])  # Show only every 10th tick
+
+    # Adjust layout
+    plt.tight_layout()
+
+    # Display the plot
+    plt.show()
