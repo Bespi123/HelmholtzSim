@@ -355,11 +355,11 @@ def objective(variables, A, target_bx, grid_length_size=0.01, num_seg=100):
 # Constraints (currently empty)
 #constraints = []
 
-def optimization_fun(Ax, target_bx, my_bounds, constraints):
+def optimization_fun(Ax, initial, target_bx, my_bounds, constraints):
     # Ejecutar la optimización
     result = minimize(
         objective,
-        x0=[1, 0.4],  # Initial guess
+        x0 = initial,  # Initial guess
         args=(Ax, target_bx),  # Argumentos adicionales para la función objetivo
         method='SLSQP',  # Optimization method
         bounds=my_bounds,  # Variable bounds
