@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objs as go
 from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.pyplot as plt
+
 from plotly.subplots import make_subplots
 
 
@@ -67,12 +67,15 @@ def plot_magnetic_field(x_coil_results):
     plt.tight_layout()
     plt.show()
 
-def simple_3d_surface_plot(x_coil_results):
-    # Define los planos y títulos
-    #lanes = ['xy', 'yz', 'xz']
-    titles = ['Plano XY', 'Plano YZ', 'Plano XZ']
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+def simple_3d_surface_plot(x_coil_results, index='Bx'):
+    # Define the planes and titles
+    titles = [f'{index} XY-plane', f'{index} YZ-plane', f'{index} XZ-plane']
     
-    # Crear un subplot con 1 fila y 3 columnas
+    # Create a subplot with 1 row and 3 columns
     fig = make_subplots(
         rows=1, cols=3, 
         subplot_titles=titles, 
@@ -80,81 +83,107 @@ def simple_3d_surface_plot(x_coil_results):
     )
 
     for ii in range(0, 3):
-        # Magnitud del campo en el plano
         if ii == 0:
-            # Filtro para el plano XY (Z = 0)
             xy_plane = x_coil_results[(x_coil_results['Z'] == 0)]
-            x = xy_plane['X'].values
-            y = xy_plane['Y'].values
-            z = xy_plane['Bx'].values
+            x, y, z = xy_plane['X'].values, xy_plane['Y'].values, xy_plane[index].values
             x_label, y_label = "X", "Y"
-
         elif ii == 1:
-            # Filtro para el plano YZ (X = 0)
             yz_plane = x_coil_results[(x_coil_results['X'] == 0)]
-            x = yz_plane['Y'].values
-            y = yz_plane['Z'].values
-            z = yz_plane['Bx'].values
+            x, y, z = yz_plane['Y'].values, yz_plane['Z'].values, yz_plane[index].values
             x_label, y_label = "Y", "Z"
-
         else:
-            # Filtro para el plano XZ (Y = 0)
             xz_plane = x_coil_results[(x_coil_results['Y'] == 0)]
-            x = xz_plane['X'].values
-            y = xz_plane['Z'].values
-            z = xz_plane['Bx'].values
+            x, y, z = xz_plane['X'].values, xz_plane['Z'].values, xz_plane[index].values
             x_label, y_label = "X", "Z"
 
-        # Crear la malla 2D de X y Y
         x_grid, y_grid = np.meshgrid(np.unique(x), np.unique(y))
-
-        # Ahora necesitamos reordenar z para que coincida con la malla 2D
-        # Crear una malla 2D de los puntos y reorganizar los valores de z en función de esa malla
-        z_grid = np.zeros_like(x_grid)  # Crear una matriz de ceros con la misma forma que x_grid
+        z_grid = np.zeros_like(x_grid)
 
         for i, xi in enumerate(np.unique(x)):
             for j, yi in enumerate(np.unique(y)):
-                # Seleccionar el valor correspondiente de z para (xi, yi)
-                # Usamos el índice (i, j) para colocar el valor adecuado de z en z_grid
                 idx = np.where((x == xi) & (y == yi))[0]
                 if len(idx) > 0:
-                    z_grid[j, i] = z[idx[0]]  # Asignamos el primer valor de z correspondiente
+                    z_grid[j, i] = np.mean(z[idx])
 
-        # Agregar la traza al subplot correspondiente
+        # Determine row and col placement
+        row, col = 1, ii + 1
+
         fig.add_trace(
             go.Surface(
                 z=z_grid,
                 x=x_grid,
                 y=y_grid,
                 colorscale='Viridis',
-                showscale=False  # Muestra una sola escala de colores
+                showscale=False
             ),
-            row=1, col=ii + 1
+            row=row, col=col
         )
 
-        # Configurar los títulos de los ejes del subplot
+        # ADD CONTOUR PLOT FOR LOW VARIATION REGION (YZ PLANE)
+        if index == 'B_norm' and ii == 1:
+            # Define the reference point at (X=0, Y=0, Z=0)
+            reference_point = x_coil_results[(x_coil_results['X'] == 0) & 
+                                             (x_coil_results['Y'] == 0) & 
+                                             (x_coil_results['Z'] == 0)]
+
+            # Get the reference value of B_norm
+            reference_value = reference_point['B_norm'].values[0] if not reference_point.empty else x_coil_results['B_norm'].mean()
+
+            # Calculate the 0.5% tolerance range
+            tolerance = 0.005 * reference_value
+            lower_bound, upper_bound = reference_value - tolerance, reference_value + tolerance
+
+            # Filter points that meet the condition in the YZ plane (X=0)
+            yz_plane = x_coil_results[x_coil_results['X'] == 0]
+            filtered_points = yz_plane[(yz_plane['B_norm'] >= lower_bound) & (yz_plane['B_norm'] <= upper_bound)]
+
+            # Ensure filtered_points is not empty before plotting
+            if not filtered_points.empty:
+                x_grid, y_grid = np.meshgrid(np.unique(filtered_points['Y']), np.unique(filtered_points['Z']))
+                z_grid = np.full_like(x_grid, np.nan, dtype=float)
+                #z_grid = np.zeros_like(x_grid)
+
+                for i, xi in enumerate(np.unique(filtered_points['Y'])):
+                    for j, yi in enumerate(np.unique(filtered_points['Z'])):
+                        idx = np.where((filtered_points['Y'] == xi) & (filtered_points['Z'] == yi))[0]
+                        if len(idx) > 0:
+                            z_grid[j, i] = filtered_points['B_norm'].values[idx]
+
+                # Add Contour or Surface Plot
+                fig.add_trace(
+                    go.Surface(
+                        x=x_grid,
+                        y=y_grid,
+                        z=z_grid,
+                        colorscale='Reds',
+                        showscale=False,
+                        opacity=1,
+                        name="Low Variation (<0.5%) Region"
+                    ),
+                    row=row, col=col  # Ensure it only appears in the YZ-plane
+                )
+
         fig.update_scenes(
             dict(
                 xaxis_title=x_label,
                 yaxis_title=y_label,
-                zaxis_title="Magnitud"
+                zaxis_title="Magnitude"
             ),
-            row=1, col=idx + 1
+            row=1, col=ii + 1  
         )
 
-    # Configurar el layout general
     fig.update_layout(
-        title="Gráficos de Superficie 3D - Todos los Planos",
+        title="Generated Magnetic Field",
         height=700,
-        width=1800,  # Ancho ajustado para acomodar 3 gráficos
+        width=1800,
         showlegend=False,
     )
 
-    # Mostrar la figura con todos los subplots
     fig.show()
 
 
-def plot_spires(fig, spire1, spire2, color='black'):
+
+def plot_spires(fig, spire1, spire2, color='black', label='X-spires'):
     """
     Add spires to an existing Plotly figure or create a new one if `fig` is None.
     
@@ -185,7 +214,9 @@ def plot_spires(fig, spire1, spire2, color='black'):
         z=spire1_flat[:, 2], 
         mode='lines', 
         line=dict(color=color, width=4),
-        name='Spire 1'
+        name=label,  # Shared legend label
+        legendgroup=label,  # Groups the legend entries
+        showlegend=True  # Only show legend once
     ))
     
     fig.add_trace(go.Scatter3d(
@@ -194,19 +225,27 @@ def plot_spires(fig, spire1, spire2, color='black'):
         z=spire2_flat[:, 2], 
         mode='lines', 
         line=dict(color=color, width=4),
-        name='Spire 2'
+        name=label,  # Shared legend label
+        legendgroup=label,  # Groups the legend entries
+        showlegend=False    # Only show legend once
     ))
 
     return fig
 
 
-def plot_grid(X, Y, fig):
-  P1_points = np.stack((X, Y, np.zeros_like(X)), axis=-1)  # X-Y plane
-  P2_points = np.stack((np.zeros_like(X), X, Y), axis=-1)  # Y-Z plane
-  P3_points = np.stack((X, np.zeros_like(X), Y), axis=-1)  # X-Z plane
+def plot_grid(X, Y, Z, fig):
+  
+  points = np.stack((X, Y, Z), axis=-1)  # concatenate coordinates
 
-  # Create a 3D scatter plot
-  #fig = go.Figure()
+  # 1) Definir las máscaras
+  mask_xy = (points[..., 2] == 0)  # plano XY: Z=0 
+  mask_yz = (points[..., 0] == 0)  # plano YZ: X=0
+  mask_xz = (points[..., 1] == 0)  # plano XZ: Y=0
+
+  # 2) Filtrar
+  P1_points = points[mask_xy]  # array con shape (N1, 3)
+  P2_points = points[mask_yz]  # array con shape (N2, 3)
+  P3_points = points[mask_xz]  # array con shape (N3, 3)
 
   # Add points for each plane
   fig.add_trace(go.Scatter3d(
