@@ -385,24 +385,24 @@ def objective(variables, A, target_bx, grid_length_size=0.01, num_seg=100):
 # Constraints (currently empty)
 #constraints = []
 
-def optimization_fun(Ax, initial, target_bx, my_bounds, constraints):
-    # Ejecutar la optimización
-    result = minimize(
-        objective,
-        x0 = initial,  # Initial guess
-        args=(Ax, target_bx),  # Argumentos adicionales para la función objetivo
-        method='SLSQP',  # Optimization method
-        bounds=my_bounds,  # Variable bounds
-        constraints=constraints,  # Constraints
-        options={
-            'maxiter': 1000,  # Maximum iterations
-            'ftol': 1e-3,  # Tolerance
-            'eps': 1e-1,  # Finite difference step size
-            'disp': True  # Display progress
-        }
-    )
-
-    # Resultados
-    x, y = result.x
-    print(f"Best solution: length = {x}, distance = {y}, turns = 30, Fitness = {-result.fun}")
-    return x, y
+#def optimization_fun(Ax, initial, target_bx, my_bounds, constraints):
+#    # Ejecutar la optimización
+#   result = minimize(
+#        objective,
+#        x0 = initial,  # Initial guess
+#        args=(Ax, target_bx),  # Argumentos adicionales para la función objetivo
+#        method='SLSQP',  # Optimization method
+#        bounds=my_bounds,  # Variable bounds
+#        constraints=constraints,  # Constraints
+#        options={
+#            'maxiter': 1000,  # Maximum iterations
+#            'ftol': 1e-3,  # Tolerance
+#            'eps': 1e-1,  # Finite difference step size
+#            'disp': True  # Display progress
+#        }
+#    )
+#
+#    # Resultados
+#    x, y = result.x
+#    print(f"Best solution: length = {x}, distance = {y}, turns = 30, Fitness = {-result.fun}")
+#    return x, y
