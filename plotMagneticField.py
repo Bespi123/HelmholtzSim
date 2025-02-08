@@ -2,6 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+import matplotlib.ticker as ticker
+import pandas as pd
+
 #import pandas as pd
 #import plotly.graph_objects as go
 #from plotly.subplots import make_subplots
@@ -71,7 +75,12 @@ def plot_magnetic_field(x_coil_results):
     plt.tight_layout()
     plt.show()
 
-def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx'):
+def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed_zaxis=False):
+    
+    # Variables to store min and max values for automatic z-axis adjustment
+    global_min_z = float('inf')
+    global_max_z = float('-inf')
+
     # Define the planes and titles
     titles = [f'{index} XY-plane', f'{index} YZ-plane', f'{index} XZ-plane']
     
@@ -186,19 +195,36 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx'):
                 row=row, col=col
             )
 
+         # Apply the flag-controlled z-axis range
+        spire11=np.einsum('ij,ljk->lik', A, spire1)
+        spire22=np.einsum('ij,ljk->lik', A, spire2)
+
+         # Compute spires' z min/max and update global range
+        spire_z_min = np.nanmin([np.nanmin(spire11[..., 2]), np.nanmin(spire22[..., 2])])
+        spire_z_max = np.nanmax([np.nanmax(spire11[..., 2]), np.nanmax(spire22[..., 2])])
+
+
+        
+        global_min_z = min(global_min_z, spire_z_min)
+        global_max_z = max(global_max_z, spire_z_max)
+
+        zaxis_range = (
+            [lower_bound_1, upper_bound_1] if use_fixed_zaxis 
+            else [global_min_z, spire_z_max]
+        )
+
         # Update axis labels and z-axis range
         fig.update_scenes(
             dict(
                 xaxis_title=x_label,
                 yaxis_title=y_label,
                 zaxis_title="Magnitude",
-                zaxis=dict(range=[lower_bound_1, upper_bound_1])
+                 zaxis=dict(range=zaxis_range)
             ),
             row=1, col=ii + 1  
         )
 
-        spire11=np.einsum('ij,ljk->lik', A, spire1)
-        spire22=np.einsum('ij,ljk->lik', A, spire2)
+
 
         plot_spires(fig, spire11, spire22, color='black', label='X-spires (m)', row=row, col=col)
 
@@ -445,4 +471,100 @@ def plot_magField_time(df, select):
     plt.tight_layout()
 
     # Display the plot
+    plt.show()
+
+
+def plot_2d_magnetic_field(x_coil_results_s, index='Bx', use_fixed_zaxis=True):
+    """
+    Generates 2D heatmaps with contour lines for magnetic field visualization
+    in the XY, YZ, and XZ planes using Matplotlib.
+
+    Parameters:
+    - x_coil_results_s (DataFrame): Magnetic field data (Bx, By, Bz).
+    - index (str): The magnetic field component to visualize ('Bx', 'By', or 'Bz').
+    - use_fixed_zaxis (bool): If True, uses a fixed z-axis range; otherwise, it scales automatically.
+
+    Returns:
+    - Displays the plots for XY, YZ, and XZ planes.
+    """
+
+    # Compute the reference magnetic field at (X=0, Y=0, Z=0)
+    reference_point = x_coil_results_s[
+        (x_coil_results_s['X'] == 0) & 
+        (x_coil_results_s['Y'] == 0) & 
+        (x_coil_results_s['Z'] == 0)
+    ]
+    
+    if reference_point.empty:
+        reference_value = x_coil_results_s[index].mean()  # Use mean if no reference found
+    else:
+        reference_value = reference_point[index].values[0]
+
+    # Calculate the 0.5% tolerance range
+    tolerance = 0.005 * reference_value
+    lower_bound_tol = reference_value - tolerance
+    upper_bound_tol = reference_value + tolerance
+
+    # Define the lower and upper bounds
+    lower_bound_1 = -1.1 * reference_value
+    upper_bound_1 = 1.1 * reference_value
+
+    # ✅ Generate multiple contour levels for field variations
+    range_values = np.array([lower_bound_tol, upper_bound_tol])  # 5 contour levels
+
+    # Define the three planes
+    planes = [
+        ('XY', 'X', 'Y', x_coil_results_s[x_coil_results_s['Z'] == 0]),
+        ('YZ', 'Y', 'Z', x_coil_results_s[x_coil_results_s['X'] == 0]),
+        ('XZ', 'X', 'Z', x_coil_results_s[x_coil_results_s['Y'] == 0])
+    ]
+
+    # ✅ Use `constrained_layout=True` to fix spacing issues
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), constrained_layout=True)
+
+    for ax, (plane_name, x_label, y_label, df) in zip(axes, planes):
+        # Create a 2D matrix (pivot table) for the heatmap
+        heatmap_data = df.pivot_table(index=y_label, columns=x_label, values=index, aggfunc='mean')
+
+        # Generate coordinate arrays
+        x_vals = np.array(heatmap_data.columns, dtype=float)
+        y_vals = np.array(heatmap_data.index, dtype=float)
+        X, Y = np.meshgrid(x_vals, y_vals, indexing='ij')
+        B_field = heatmap_data.values
+
+        # ✅ Plot main heatmap
+        img = ax.imshow(
+            heatmap_data, cmap='viridis', origin='lower',
+            extent=[x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max()],
+            vmin=lower_bound_1,  # 🔹 Fixed min color scale
+            vmax=upper_bound_1   # 🔹 Fixed max color scale
+        )
+
+        # ✅ Highlight the tolerance region using `contourf()`
+        ax.contourf(
+            X, Y, B_field,
+            levels=[lower_bound_tol, upper_bound_tol],  # Only fill between tolerance limits
+            colors=['red'], alpha=0.4  # Semi-transparent red highlight
+        )
+
+        # ✅ Overlay standard contour lines
+        contours = ax.contour(
+            X, Y, B_field, levels=range_values, colors='white', linewidths=1.5
+        )
+
+        # Label contour lines
+        ax.clabel(
+            contours, inline=True, fontsize=10,
+            fmt=lambda x: f"{x:.2e} nT"
+        )
+
+        # Set axis labels and title
+        ax.set_xlabel(f"{x_label} (m)")
+        ax.set_ylabel(f"{y_label} (m)")
+        ax.set_title(f"{index} in {plane_name} plane")
+
+    # ✅ Colorbar with proper spacing
+    fig.colorbar(img, ax=axes.ravel().tolist(), label=f'{index} (nT)')
+
+    # ✅ No need for `plt.tight_layout()` anymore!
     plt.show()
