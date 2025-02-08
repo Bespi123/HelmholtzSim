@@ -82,7 +82,7 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
     global_max_z = float('-inf')
 
     # Define the planes and titles
-    titles = [f'{index} XY-plane', f'{index} YZ-plane', f'{index} XZ-plane']
+    titles = [f'{index} in XY-plane', f'{index} in YZ-plane', f'{index} in XZ-plane']
     
     # Check if reference point exists
     reference_point = x_coil_results[(x_coil_results['X'] == 0) & 
@@ -101,6 +101,8 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
     # Define the lower and upper bounds
     lower_bound_1 = -1.5 * reference_value
     upper_bound_1 = 1.5 * reference_value
+
+    print('reference_value: ',reference_value)
 
     # Create a subplot with 1 row and 3 columns
     fig = make_subplots(
@@ -216,24 +218,39 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
         # Update axis labels and z-axis range
         fig.update_scenes(
             dict(
-                xaxis_title=x_label,
-                yaxis_title=y_label,
+                xaxis_title=f'{x_label} (m)',
+                yaxis_title=f'{y_label} (m)',
                 zaxis_title="Magnitude",
                  zaxis=dict(range=zaxis_range)
             ),
             row=1, col=ii + 1  
         )
 
-
-
         plot_spires(fig, spire11, spire22, color='black', label='X-spires (m)', row=row, col=col)
 
-    # Update layout
     fig.update_layout(
         title="Generated Magnetic Field",
         height=700,
         width=1800,
-        showlegend=False  # Fix: Show legend for debugging
+        showlegend=False,
+        scene=dict(
+            camera=dict(
+                eye=dict(x=0, y=0, z=3),  # Vista desde arriba
+                up=dict(x=0, y=1, z=0)  # Rotación de 90° en Z
+            )
+        ),
+        scene2=dict(
+            camera=dict(
+                eye=dict(x=0, y=0, z=3),  # Vista desde arriba
+                up=dict(x=0, y=1, z=0)  # Rotación de 90° en Z
+            )
+        ),
+        scene3=dict(
+            camera=dict(
+                eye=dict(x=0, y=0, z=3),  # Vista desde arriba
+                up=dict(x=0, y=1, z=0)  # Rotación de 90° en Z
+            )
+        )
     )
 
     fig.show()
@@ -474,18 +491,20 @@ def plot_magField_time(df, select):
     plt.show()
 
 
-def plot_2d_magnetic_field(x_coil_results_s, index='Bx', use_fixed_zaxis=True):
+def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fixed_zaxis=True):
     """
     Generates 2D heatmaps with contour lines for magnetic field visualization
     in the XY, YZ, and XZ planes using Matplotlib.
+    Also plots the coil spires (spire1, spire2) in each plane.
 
     Parameters:
     - x_coil_results_s (DataFrame): Magnetic field data (Bx, By, Bz).
+    - spire1, spire2 (numpy.ndarray): Arrays representing the spires (shape: (4, 3, N)).
     - index (str): The magnetic field component to visualize ('Bx', 'By', or 'Bz').
     - use_fixed_zaxis (bool): If True, uses a fixed z-axis range; otherwise, it scales automatically.
 
     Returns:
-    - Displays the plots for XY, YZ, and XZ planes.
+    - Displays the plots for XY, YZ, and XZ planes with the spires.
     """
 
     # Compute the reference magnetic field at (X=0, Y=0, Z=0)
@@ -501,16 +520,20 @@ def plot_2d_magnetic_field(x_coil_results_s, index='Bx', use_fixed_zaxis=True):
         reference_value = reference_point[index].values[0]
 
     # Calculate the 0.5% tolerance range
-    tolerance = 0.005 * reference_value
+    if reference_value == 0:
+        tolerance = 0.005
+    else:
+        tolerance = 0.005 * reference_value
     lower_bound_tol = reference_value - tolerance
     upper_bound_tol = reference_value + tolerance
 
     # Define the lower and upper bounds
-    lower_bound_1 = -1.1 * reference_value
-    upper_bound_1 = 1.1 * reference_value
+    lower_bound_1 = -1.5 * reference_value
+    upper_bound_1 = 1.5 * reference_value
 
     # ✅ Generate multiple contour levels for field variations
-    range_values = np.array([lower_bound_tol, upper_bound_tol])  # 5 contour levels
+    range_values = np.sort(np.array([lower_bound_tol, upper_bound_tol]))
+    print('reference_value: ',reference_value)
 
     # Define the three planes
     planes = [
@@ -541,22 +564,39 @@ def plot_2d_magnetic_field(x_coil_results_s, index='Bx', use_fixed_zaxis=True):
         )
 
         # ✅ Highlight the tolerance region using `contourf()`
-        ax.contourf(
-            X, Y, B_field,
-            levels=[lower_bound_tol, upper_bound_tol],  # Only fill between tolerance limits
-            colors=['red'], alpha=0.4  # Semi-transparent red highlight
-        )
+        if reference_value != 0:
+            ax.contourf(
+                Y, X, B_field,
+                levels=[range_values[0], range_values[1]],  # Only fill between tolerance limits
+                colors=['red'], alpha=0.4  # Semi-transparent red highlight
+            )
 
-        # ✅ Overlay standard contour lines
-        contours = ax.contour(
-            X, Y, B_field, levels=range_values, colors='white', linewidths=1.5
-        )
+            # ✅ Overlay standard contour lines
+            contours = ax.contour(
+                Y, X, B_field, levels=range_values, colors='white', linewidths=1.5
+            )
 
-        # Label contour lines
-        ax.clabel(
-            contours, inline=True, fontsize=10,
-            fmt=lambda x: f"{x:.2e} nT"
-        )
+            # Label contour lines
+            ax.clabel(
+                contours, inline=True, fontsize=10,
+                fmt=lambda x: f"{x:.2e} T"
+            )
+
+        # ✅ Transform spires for the current plane
+        if plane_name == 'XY':
+            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 1, :]
+            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 1, :]
+        elif plane_name == 'YZ':
+            spire1_x, spire1_y = spire1[:, 1, :], spire1[:, 2, :]
+            spire2_x, spire2_y = spire2[:, 1, :], spire2[:, 2, :]
+        elif plane_name == 'XZ':
+            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 2, :]
+            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 2, :]
+
+        # ✅ Plot the spires
+        for i in range(spire1.shape[0]):
+            ax.plot(spire1_x[i, :], spire1_y[i, :], color='black', linestyle='-', linewidth=4, label='Spire 1' if i == 0 else "")
+            ax.plot(spire2_x[i, :], spire2_y[i, :], color='black', linestyle='-', linewidth=4, label='Spire 2' if i == 0 else "")
 
         # Set axis labels and title
         ax.set_xlabel(f"{x_label} (m)")
@@ -564,7 +604,147 @@ def plot_2d_magnetic_field(x_coil_results_s, index='Bx', use_fixed_zaxis=True):
         ax.set_title(f"{index} in {plane_name} plane")
 
     # ✅ Colorbar with proper spacing
-    fig.colorbar(img, ax=axes.ravel().tolist(), label=f'{index} (nT)')
+    fig.colorbar(img, ax=axes.ravel().tolist(), label=f'{index} (T)')
 
     # ✅ No need for `plt.tight_layout()` anymore!
+    plt.legend()
+    plt.show()
+
+
+def plot_mainAxis_field(x_coil_results_s, index='Bx'):
+    """
+    Plots Bx vs X, Y, and Z for the main axes with a highlighted tolerance region.
+
+    Parameters:
+    - x_coil_results_s (DataFrame): Magnetic field data.
+    - index (str): Magnetic field component to visualize ('Bx', 'By', 'Bz').
+
+    Returns:
+    - A figure with three subplots (Bx vs X, Y, and Z).
+    """
+    
+    # Compute the reference magnetic field at (X=0, Y=0, Z=0)
+    reference_point = x_coil_results_s[
+        (x_coil_results_s['X'] == 0) & 
+        (x_coil_results_s['Y'] == 0) & 
+        (x_coil_results_s['Z'] == 0)
+    ]
+    
+    if reference_point.empty:
+        reference_value = x_coil_results_s[index].mean()  # Use mean if no reference found
+    else:
+        reference_value = reference_point[index].values[0]
+
+    # Calculate the 0.5% tolerance range
+    tolerance = 0.005 * reference_value if reference_value != 0 else 0.005
+    lower_bound_tol, upper_bound_tol = reference_value - tolerance, reference_value + tolerance
+
+    # Define the three axes and filter data accordingly
+    lines = [
+        ('X', x_coil_results_s[(x_coil_results_s['Y'] == 0) & (x_coil_results_s['Z'] == 0)]),
+        ('Y', x_coil_results_s[(x_coil_results_s['X'] == 0) & (x_coil_results_s['Z'] == 0)]),
+        ('Z', x_coil_results_s[(x_coil_results_s['X'] == 0) & (x_coil_results_s['Y'] == 0)])
+    ]
+
+    # ✅ Create figure with three subplots
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), constrained_layout=True)
+
+    for ax, (x_label, df) in zip(axes, lines):
+        # ✅ Filter and sort data
+        filtered_points = df[(df[index] >= lower_bound_tol) & (df[index] <= upper_bound_tol)].sort_values(by=x_label)
+
+        # ✅ Ensure sorted order for all data
+        x_values_full = np.sort(df[x_label].values)
+        bx_values_full = df[index].values[np.argsort(df[x_label].values)]
+
+        x_values_filtered = np.sort(filtered_points[x_label].values) if not filtered_points.empty else []
+        bx_values_filtered = filtered_points[index].values[np.argsort(filtered_points[x_label].values)] if not filtered_points.empty else []
+
+        # ✅ Plot full dataset
+        ax.plot(x_values_full, bx_values_full, marker='o', linestyle='-', label='All Data')
+
+        # ✅ Overlay the filtered tolerance region
+        ax.plot(x_values_filtered, bx_values_filtered, marker='.', linestyle='-', color='red', label='Filtered Range')
+
+        # ✅ Set dynamic labels and title
+        ax.set_xlabel(f"{x_label} (m)")
+        ax.set_ylabel(f"{index} (T)")
+        ax.set_title(f"{index} vs {x_label}")
+        ax.legend()
+        ax.grid(True)
+
+    # ✅ Show the figure
+    plt.show()
+
+
+def plot_magnetic_field_directions(x_coil_results_s, spire1, spire2):
+    """
+    Generates quiver plots to visualize the magnetic field directions
+    using unitary vectors in the XY and XZ planes, with spires plotted.
+
+    Parameters:
+    - x_coil_results_s (DataFrame): Magnetic field data.
+    - spire1, spire2 (numpy.ndarray): Arrays representing the spires (shape: (4, 3, N)).
+
+    Returns:
+    - Displays quiver plots for XY and XZ planes with unitary vectors and spires.
+    """
+
+    # Define the two planes with their respective magnetic field components
+    planes = [
+        ('XY', 'X', 'Y', x_coil_results_s[x_coil_results_s['Z'] == 0], 'Bx', 'By'),
+        ('XZ', 'X', 'Z', x_coil_results_s[x_coil_results_s['Y'] == 0], 'Bx', 'Bz')
+    ]
+
+    # Create figure with two subplots
+    fig, axes = plt.subplots(1, 2, figsize=(18, 6), constrained_layout=True)
+
+    for ax, (plane_name, x_label, y_label, df, field_x, field_y) in zip(axes, planes):
+        # Create a 2D matrix (pivot table) for the quiver plot
+        x_vals = np.sort(df[x_label].unique())
+        y_vals = np.sort(df[y_label].unique())
+        X, Y = np.meshgrid(x_vals, y_vals, indexing='ij')
+
+        # Get Bx and By components, replace NaNs with 0
+        Bx = df.pivot_table(index=x_label, columns=y_label, values=field_x, aggfunc='mean').values
+        By = df.pivot_table(index=x_label, columns=y_label, values=field_y, aggfunc='mean').values
+        Bx = np.nan_to_num(Bx)
+        By = np.nan_to_num(By)
+
+        # Normalize the vectors to unit length
+        magnitude = np.sqrt(Bx**2 + By**2)
+        magnitude[magnitude == 0] = 1  # Avoid division by zero
+        Bx /= magnitude
+        By /= magnitude
+
+        # Add Magnetic Field Direction Arrows (Quiver)
+        step = 8  # Reduce arrow density
+        ax.quiver(
+            X[::step, ::step], Y[::step, ::step], Bx[::step, ::step], By[::step, ::step],
+            scale=10, color='red', width=0.005, headwidth=5
+        )
+
+        # Plot spires for the current plane
+        if plane_name == 'XY':
+            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 1, :]
+            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 1, :]
+        elif plane_name == 'XZ':
+            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 2, :]
+            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 2, :]
+
+        # Plot the spires
+        for i in range(spire1.shape[0]):
+            ax.plot(spire1_x[i, :], spire1_y[i, :], color='black', linestyle='-', linewidth=10, label='Spire 1' if i == 0 else "")
+            ax.plot(spire2_x[i, :], spire2_y[i, :], color='black', linestyle='-', linewidth=10, label='Spire 2' if i == 0 else "")
+
+        # Set axis labels and title
+        ax.set_xlabel(f"{x_label} (m)")
+        ax.set_ylabel(f"{y_label} (m)")
+        ax.set_title(f"Magnetic Field Directions in {plane_name} plane")
+        ax.grid(True)
+
+    # Add a legend for spires in the last plot
+    axes[-1].legend()
+
+    # Show the figure
     plt.show()
