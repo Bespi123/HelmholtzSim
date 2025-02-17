@@ -107,6 +107,8 @@ def square_spires(A, h, a, num_seg):
         [h_half * np.ones(num_seg), L_half * np.ones(num_seg), z_coords]   # Side 4: left edge
     ])
     
+    print('Sides: ', np.shape(sides))
+
     # Transform the coordinates of the first coil using the matrix A
     spire1 = np.einsum('ij,ljk->lik', A, sides)
     
@@ -126,7 +128,7 @@ def circular_spires(A, h, r, num_seg):
     
     Parameters:
         A (ndarray): A 3x3 transformation matrix to rotate or transform the spiral coordinates.
-        h (float): The height (length along the z-axis) of the spirals.
+        h (float): Separaration between the spires.
         r (float): The radius of the circular spirals.
         num_seg (int): The number of segments (points) for each quarter of the spiral.
     
@@ -159,6 +161,9 @@ def circular_spires(A, h, r, num_seg):
     # Transpose the sides to match the required shape for transformation (shape: [4, 3, num_seg])
     sides = sides.transpose(0, 2, 1)
     
+    print('Sides: ', np.shape(sides))
+
+
     # Apply the transformation matrix A to the coordinates of the first spiral (spire1)
     spire1 = np.einsum('ij,ljk->lik', A, sides)
     
@@ -171,6 +176,135 @@ def circular_spires(A, h, r, num_seg):
     # Return the coordinates of both spirals
     return spire1, spire2
 
+
+def star_spires(A, h, r, num_seg, star_points=6):
+    """
+    Generates coordinates for two star-shaped coils (spires) in 3D space,
+    divided into 4 equal groups of edges.
+    
+    Parameters:
+        A (ndarray): A 3x3 transformation matrix to rotate or transform the star coordinates.
+        h (float): Separation between the spires (displacement along the x-axis).
+        r (float): Outer radius of the star.
+        num_seg (int): Number of segments (points) to be distributed among all edges of the star.
+        star_points (int): Number of star points (default is 6, yielding 12 vertices with alternating outer and inner).
+        
+    Returns:
+        tuple: (spire1, spire2) each of shape (4, 3, group_size * seg_per_edge)
+               where 4 is the number of groups,
+               3 corresponds to (x, y, z),
+               and group_size * seg_per_edge is the total points in each group.
+    """
+    total_num_seg = 4*num_seg
+    total_vertices = star_points * 2  # Total vertices (e.g., 12 for a 6-point star)
+    seg_per_edge = total_num_seg // total_vertices  # Ensure integer division
+    
+    # Generate angles for each vertex
+    angles = np.linspace(0, 2 * np.pi, total_vertices, endpoint=False)
+    
+    # Alternating radii for outer and inner points
+    radii = np.empty(total_vertices)
+    radii[0::2] = r          # Outer points (even indices)
+    radii[1::2] = r / 2      # Inner points (odd indices)
+    
+    # Compute y and z coordinates of the vertices
+    y_vertices = radii * np.sin(angles)
+    z_vertices = radii * np.cos(angles)
+    
+    # Close the star by repeating the first vertex at the end
+    y_closed = np.append(y_vertices, y_vertices[0])
+    z_closed = np.append(z_vertices, z_vertices[0])
+    
+    # Generate edges by interpolating between consecutive vertices
+    star_edges = []
+    for i in range(total_vertices):
+        # Linearly interpolate between the current and next vertex
+        y_edge = np.linspace(y_closed[i], y_closed[i+1], seg_per_edge)
+        z_edge = np.linspace(z_closed[i], z_closed[i+1], seg_per_edge)
+        x_edge = (h / 2) * np.ones(seg_per_edge)  # X-coordinate is h/2 for the first spire
+        
+        # Stack coordinates into (seg_per_edge, 3) array and add to the list
+        edge_coords = np.vstack((x_edge, y_edge, z_edge)).T
+        star_edges.append(edge_coords)
+    
+    # Convert list of edges to a numpy array (shape: [total_vertices, seg_per_edge, 3])
+    star_edges = np.array(star_edges)
+    star_edges = star_edges.reshape(-1, 3)
+    
+    points_per_group = np.size(star_edges,0) // 4
+
+    groups = []
+    for i in range(4):
+        # Select the edges for the current group
+        group_edges = star_edges[i*points_per_group : (i+1)*points_per_group]
+        # Combine all points in these edges into a single array (shape: [edges_per_group * seg_per_edge, 3])
+        group_points = group_edges.reshape(-1, 3)
+        # Transpose to shape (3, edges_per_group * seg_per_edge) for transformation
+        groups.append(group_points.T)
+    
+    # Convert groups to a numpy array (shape: [4, 3, group_points_per_group])
+    sides = np.array(groups)
+
+    # Apply transformation matrix A to the first spire
+    spire1 = np.einsum('ij,ljk->lik', A, sides)
+    
+    # Compute coordinates for the second spire (shifted by -h along x-axis before transformation)
+    displacement = np.array([h, 0, 0]).reshape(3, 1)
+    spire2 = np.einsum('ij,ljk->lik', A, sides - displacement)
+    
+    return spire1, spire2
+
+def polygonal_spires(A, h, r, num_seg, n=5):
+    """
+    Genera coordenadas para dos bobinas poligonales en 3D, divididas en 4 grupos iguales.
+    
+    Parámetros:
+        A (ndarray): Matriz de transformación 3x3.
+        h (float): Separación entre las bobinas (eje x).
+        r (float): Radio del polígono.
+        num_seg (int): Segmentos totales a distribuir en todas las aristas.
+        n (int): Número de lados del polígono (ej. 5 = pentágono).
+        
+    Retorna:
+        tuple: (spire1, spire2) cada una con forma (4, 3, puntos_por_grupo)
+    """
+    total_num_seg = 4 * num_seg
+    seg_per_edge = total_num_seg // n  # Puntos por arista
+    
+    # Generar vértices equiespaciados
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    y_vertices = r * np.sin(angles)
+    z_vertices = r * np.cos(angles)
+    
+    # Cerrar el polígono
+    y_closed = np.append(y_vertices, y_vertices[0])
+    z_closed = np.append(z_vertices, z_vertices[0])
+    
+    # Generar aristas
+    poly_edges = []
+    for i in range(n):
+        y_edge = np.linspace(y_closed[i], y_closed[i+1], seg_per_edge)
+        z_edge = np.linspace(z_closed[i], z_closed[i+1], seg_per_edge)
+        x_edge = (h/2) * np.ones(seg_per_edge)
+        poly_edges.append(np.vstack((x_edge, y_edge, z_edge)).T)
+    
+    poly_edges = np.array(poly_edges)  # Forma: [n, seg_per_edge, 3]
+    poly_edges = poly_edges.reshape(-1, 3)
+
+    # Agrupar aristas en 4 cuadrantes (redondeando hacia abajo)
+    points_per_group = np.size(poly_edges,0) // 4
+    groups = []
+    for i in range(4):
+        grupo = poly_edges[i*points_per_group : (i+1)*points_per_group]
+        groups.append(grupo.reshape(-1, 3).T)  # Forma: [3, edges_per_group*seg_per_edge]
+    
+    sides = np.array(groups)
+    
+    # Aplicar transformaciones
+    spire1 = np.einsum('ij,ljk->lik', A, sides)
+    spire2 = np.einsum('ij,ljk->lik', A, sides - np.array([h, 0, 0]).reshape(3, 1))
+    
+    return spire1, spire2
 
 def calculate_field(args):
     """
