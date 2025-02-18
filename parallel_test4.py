@@ -78,19 +78,19 @@ def generate_range(a, step_size):
 
 def square_spires(A, h, a, num_seg, b=None):
     """
-    Generates coordinates of two square coils in 3D space.
+    Generates coordinates for two square or rectangular coils in 3D space, transformed by matrix A.
 
     Parameters:
-        A (numpy.ndarray): Transformation matrix to rotate or transform the coil's coordinates.
-        h (float): Separation between the two coils.
-        a (float): Half the length of the square coil side.
-        num_seg (int): Number of segments per side of the square.
+        A (ndarray): 3x3 transformation matrix.
+        h (float): Separation between the coils (along the X-axis).
+        a (float): Half the horizontal side length (along the Y-axis).
+        num_seg (int): Number of segments per side.
+        b (float, optional): Half the vertical side length (along the Z-axis). If not provided, b = a (square).
 
     Returns:
-        spire1, spire2 (numpy.ndarray): Arrays containing the 3D coordinates of the two square coils.
+        tuple: (spire1, spire2) arrays of shape (4, 3, num_seg).
     """
-
-    # Si b no se proporciona, se usa b = a (cuadrado)
+    # If b is not provided, use b = a (square)
     if b is None:
         b = a
 
@@ -100,7 +100,6 @@ def square_spires(A, h, a, num_seg, b=None):
     L0_half = a
     L1_half = b
 
-    
     # Generate evenly spaced points for the y and z coordinates along the square sides
     y_coords = np.linspace(L0_half, -L0_half, num_seg)
     z_coords = np.linspace(-L1_half, L1_half, num_seg)
@@ -113,8 +112,6 @@ def square_spires(A, h, a, num_seg, b=None):
         [h_half * np.ones(num_seg), L0_half * np.ones(num_seg), z_coords]   # Side 4: left edge
     ])
     
-    print('Sides: ', np.shape(sides))
-
     # Transform the coordinates of the first coil using the matrix A
     spire1 = np.einsum('ij,ljk->lik', A, sides)
     
@@ -166,9 +163,6 @@ def circular_spires(A, h, r, num_seg):
     
     # Transpose the sides to match the required shape for transformation (shape: [4, 3, num_seg])
     sides = sides.transpose(0, 2, 1)
-    
-    print('Sides: ', np.shape(sides))
-
 
     # Apply the transformation matrix A to the coordinates of the first spiral (spire1)
     spire1 = np.einsum('ij,ljk->lik', A, sides)
@@ -511,35 +505,3 @@ def objective(variables, A, target_bx, grid_length_size=0.01, num_seg=100):
     else:
         # Penalize for exceeding the target error
         return 5000 + e
-
-# Definir los argumentos adicionales
-#Ax = np.eye(3)  # Identity matrix
-#target_bx = 45839.86895741893  # Desired target for Bx
-
-# Bounds for the variables
-#my_bounds = [(1e-1, 1), (0.4, 1)]  # Bounds for length and distance
-
-# Constraints (currently empty)
-#constraints = []
-
-#def optimization_fun(Ax, initial, target_bx, my_bounds, constraints):
-#    # Ejecutar la optimización
-#   result = minimize(
-#        objective,
-#        x0 = initial,  # Initial guess
-#        args=(Ax, target_bx),  # Argumentos adicionales para la función objetivo
-#        method='SLSQP',  # Optimization method
-#        bounds=my_bounds,  # Variable bounds
-#        constraints=constraints,  # Constraints
-#        options={
-#            'maxiter': 1000,  # Maximum iterations
-#            'ftol': 1e-3,  # Tolerance
-#            'eps': 1e-1,  # Finite difference step size
-#            'disp': True  # Display progress
-#        }
-#    )
-#
-#    # Resultados
-#    x, y = result.x
-#    print(f"Best solution: length = {x}, distance = {y}, turns = 30, Fitness = {-result.fun}")
-#    return x, y
