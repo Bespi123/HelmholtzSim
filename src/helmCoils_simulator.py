@@ -200,7 +200,7 @@ def star_spires(A, h, r, num_seg, star_points=6):
     seg_per_edge = total_num_seg // total_vertices  # Ensure integer division
     
     # Generate angles for each vertex
-    angles = np.linspace(0, 2 * np.pi, total_vertices, endpoint=False)
+    angles = np.linspace(2 * np.pi, 0, total_vertices, endpoint=False)
     
     # Alternating radii for outer and inner points
     radii = np.empty(total_vertices)
@@ -272,7 +272,7 @@ def polygonal_spires(A, h, r, num_seg, n=5):
     seg_per_edge = total_num_seg // n  # Puntos por arista
     
     # Generar vértices equiespaciados
-    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
+    angles = np.linspace(2 * np.pi, 0, n, endpoint=False)
     y_vertices = r * np.sin(angles)
     z_vertices = r * np.cos(angles)
     
