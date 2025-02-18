@@ -76,7 +76,7 @@ def generate_range(a, step_size):
     return X_unique, Y_unique, Z_unique
 
 
-def square_spires(A, h, a, num_seg):
+def square_spires(A, h, a, num_seg, b=None):
     """
     Generates coordinates of two square coils in 3D space.
 
@@ -89,22 +89,28 @@ def square_spires(A, h, a, num_seg):
     Returns:
         spire1, spire2 (numpy.ndarray): Arrays containing the 3D coordinates of the two square coils.
     """
+
+    # Si b no se proporciona, se usa b = a (cuadrado)
+    if b is None:
+        b = a
+
     # Calculate half the separation distance between the two coils
     h_half = h / 2
     
-    # Half the length of the square side
-    L_half = a
+    L0_half = a
+    L1_half = b
+
     
     # Generate evenly spaced points for the y and z coordinates along the square sides
-    y_coords = np.linspace(L_half, -L_half, num_seg)
-    z_coords = np.linspace(-L_half, L_half, num_seg)
+    y_coords = np.linspace(L0_half, -L0_half, num_seg)
+    z_coords = np.linspace(-L1_half, L1_half, num_seg)
     
     # Define the 3D coordinates of the four sides of a square coil
     sides = np.array([
-        [h_half * np.ones(num_seg), y_coords, L_half * np.ones(num_seg)],  # Side 1: top edge
-        [h_half * np.ones(num_seg), -L_half * np.ones(num_seg), y_coords], # Side 2: right edge
-        [h_half * np.ones(num_seg), z_coords, -L_half * np.ones(num_seg)], # Side 3: bottom edge
-        [h_half * np.ones(num_seg), L_half * np.ones(num_seg), z_coords]   # Side 4: left edge
+        [h_half * np.ones(num_seg), y_coords, L1_half * np.ones(num_seg)],  # Side 1: top edge
+        [h_half * np.ones(num_seg), -L0_half * np.ones(num_seg), -z_coords], # Side 2: right edge
+        [h_half * np.ones(num_seg), -y_coords, -L1_half * np.ones(num_seg)], # Side 3: bottom edge
+        [h_half * np.ones(num_seg), L0_half * np.ones(num_seg), z_coords]   # Side 4: left edge
     ])
     
     print('Sides: ', np.shape(sides))
