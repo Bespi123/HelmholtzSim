@@ -47,7 +47,7 @@ def resistance_coil(awg_size, N, L):
 # Define the optimizer as a class:
 class HelmholtzOptimizer:
     def __init__(self, desired_size, spires_function, Ax, X, Y, Z, N=30, I=1, fix_L=False, fixed_L_value=None,
-                 grid_length_size=0.01, population = 20, generations = 50):
+                 grid_length_size=0.01, population = 20, generations = 50, mutation = 0.2):
         """
         Parameters:
           desired_size: base size parameter for coil dimensions.
@@ -71,7 +71,7 @@ class HelmholtzOptimizer:
         self.grid_length_size = grid_length_size
         self.pop = population
         self.gen = generations
-
+        self.mut = mutation
         # Set ranges for L and d based on fix_L flag.
         if self.fix_L:
             if self.fixed_L_value is None:
@@ -181,11 +181,14 @@ class HelmholtzOptimizer:
         self.apply_constraints(ind2)
         return ind1, ind2
 
-    def run_ga(self, pop_size = None, cxpb=0.5, mutpb=0.2, ngen=None):
+    def run_ga(self, pop_size = None, cxpb=0.5, mutpb=None, ngen=None):
         if pop_size is None:
             pop_size = self.pop
         if ngen is None:
             ngen = self.gen
+        if mutpb is None:
+            mutpb = self.mut
+
         pop = self.toolbox.population(n=pop_size)
         hof = tools.HallOfFame(1)
         stats = tools.Statistics(lambda ind: ind.fitness.values)
