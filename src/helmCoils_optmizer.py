@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from deap import base, creator, tools, algorithms
-import helmCoils_simulator as test_3
+import src.helmCoils_simulator as test_3
 
 # AWG data (remains global if it is constant)
 # Constants
