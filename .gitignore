@@ -1,0 +1,42 @@
+# Ignorar archivos de Python compilados
+__pycache__/
+*.py[cod]
+*.so
+
+# Ignorar archivos de Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignorar archivos de entorno virtual (si usas venv)
+venv/
+.env/
+
+# Ignorar datos pesados o temporales
+data/raw/
+data/processed/
+*.csv
+*.json
+*.xlsx
+*.h5
+*.pickle
+*.parquet
+
+# Ignorar logs y archivos de ejecución
+logs/
+*.log
+*.out
+*.err
+
+# Ignorar archivos de configuración de Jupyter y cache
+.jupyter/
+.jupyter_cache/
+
+# Ignorar dependencias instaladas si se usa Conda o Pipenv
+env/
+pip-wheel-metadata/
+Pipfile.lock
+poetry.lock
+
+# Ignorar archivos de ejecución en Mac/Linux/Windows
+.DS_Store
+Thumbs.db
+
