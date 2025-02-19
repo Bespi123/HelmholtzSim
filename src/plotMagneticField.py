@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from matplotlib.dates import DateFormatter
 
 import matplotlib.ticker as ticker
 import pandas as pd
@@ -128,10 +129,6 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
         x, y, z = plane[x_label].values, plane[y_label].values, plane[index].values
         filtered_points = plane[(plane[index] >= lower_bound_tol) & (plane[index] <= upper_bound_tol)]
 
-        # Debugging: Check if filtered_points is empty
-        #print(f"Filtered points for {titles[ii]}:")
-        #print(filtered_points)
-
         # Generate grid
         x_grid, y_grid = np.meshgrid(np.unique(x), np.unique(y))
         z_grid = np.full_like(x_grid, np.nan, dtype=float)  # Initialize with NaN
@@ -175,9 +172,6 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
                     if len(idx) > 0:
                         z_grid_1[j, i] = np.mean(zz[idx])
 
-            #Debugging: Ensure `z_grid_1` is valid
-            #print(f"Filtered z_grid_1 for {titles[ii]}:")
-            #print(z_grid_1)
 
             # Add Contour or Surface Plot
             fig.add_trace(
@@ -438,53 +432,46 @@ def plot_magField_time(df, select):
     Returns:
     - None: Displays the plot.
     """
-    # Create a figure with 3 subplots (one for each component)
-    fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+    # Mapeo de columnas según el sistema de coordenadas
+    column_mapping = {
+        'ECI': {'Bx': 'Bx ECI (nT)', 'By': 'By ECI (nT)', 'Bz': 'Bz ECI (nT)'},
+        'ECEF': {'Bx': 'Bx ECEF (nT)', 'By': 'By ECEF (nT)', 'Bz': 'Bz ECEF (nT)'},
+        'NED': {'Bx': 'B N', 'By': 'B E', 'Bz': 'B D'}
+    }
 
-    if select == 'ECI':
-        Bx_column = 'Bx ECI (nT)'
-        By_column = 'By ECI (nT)'
-        Bz_column = 'Bz ECI (nT)'
-        label = 'ECI'
-    elif select == 'ECEF':
-        Bx_column = 'Bx ECEF (nT)'
-        By_column = 'By ECEF (nT)'
-        Bz_column = 'Bz ECEF (nT)'
-        label = 'ECEF'
-    elif select == 'NED':
-        Bx_column = 'B N'
-        By_column = 'B E'
-        Bz_column = 'B D'
-        label = 'NED'
-    else:
-        print('Not supported coordinate frame.')
-        return  # Exit the function if an unsupported coordinate frame is provided
+    # Verificar si el sistema de coordenadas es válido
+    if select not in column_mapping:
+        raise ValueError(f"Unsupported coordinate frame: {select}. Use 'ECI', 'ECEF', or 'NED'.")
 
-    # Plot each magnetic field component
-    axs[0].plot(df["Time (UTC)"], df[Bx_column], color="red")
-    axs[0].set_title(f"Component Bx in {label} coordinates (nT)")
-    axs[0].set_ylabel(Bx_column)
+    # Verificar que las columnas necesarias estén en el DataFrame
+    required_columns = [column_mapping[select]['Bx'], column_mapping[select]['By'], column_mapping[select]['Bz'], "Time (UTC)"]
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    axs[1].plot(df["Time (UTC)"], df[By_column], color="blue")
-    axs[1].set_title(f"Component By in {label} coordinates (nT)")
-    axs[1].set_ylabel(By_column)
+    # Crear una figura con 3 subplots (uno para cada componente)
+    fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
 
-    axs[2].plot(df["Time (UTC)"], df[Bz_column], color="green")
-    axs[2].set_title(f"Component Bz in {label} coordinates (nT)")
-    axs[2].set_ylabel(Bz_column)
-    axs[2].set_xlabel("Time (UTC)")
+    # Colores para cada componente
+    colors = {'Bx': 'red', 'By': 'blue', 'Bz': 'green'}
 
-    # Reduce the number of ticks on the x-axis
+    # Graficar cada componente del campo magnético
+    for i, (component, column) in enumerate(zip(['Bx', 'By', 'Bz'], [column_mapping[select]['Bx'], column_mapping[select]['By'], column_mapping[select]['Bz']])):
+        axs[i].plot(df["Time (UTC)"], df[column], color=colors[component], label=f'{component} ({select})')
+        axs[i].set_title(f"Component {component} in {select} coordinates (nT)")
+        axs[i].set_ylabel(f"{component} (nT)")
+        axs[i].grid(True, alpha=0.5, linestyle='--', linewidth=0.1, color='gray')  # Personalizar la cuadrícula
+        axs[i].legend(loc='upper right')  # Añadir leyenda
+
+    # Formatear el eje X para mostrar fechas de manera más legible
+    date_format = DateFormatter("%Y-%m-%d %H:%M")
+    axs[-1].xaxis.set_major_formatter(date_format)
+    axs[-1].set_xlabel("Time (UTC)")
+    plt.xticks(rotation=45)  # Rotar las etiquetas del eje X para mejor legibilidad
+
+    # Reducir el número de ticks en el eje X
     for ax in axs:
-        ax.tick_params(axis='x', which='both', labelrotation=45)
-        ax.set_xticks(ax.get_xticks()[::10])  # Show only every 10th tick
-
-    # Adjust layout
-    plt.tight_layout()
-
-    # Display the plot
-    plt.show()
-
+        ax.set_xticks(ax.get_xticks()[::10]) 
 
 def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fixed_zaxis=True):
     """
