@@ -2,13 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from matplotlib.dates import DateFormatter
 
 import matplotlib.ticker as ticker
 import pandas as pd
-
-#import pandas as pd
-#import plotly.graph_objects as go
-#from plotly.subplots import make_subplots
 
 Ax = np.eye(3)
 Ay = np.array([[0, -1,  0], [1,  0,  0], [0,  0,  1]])
@@ -132,10 +129,6 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
         x, y, z = plane[x_label].values, plane[y_label].values, plane[index].values
         filtered_points = plane[(plane[index] >= lower_bound_tol) & (plane[index] <= upper_bound_tol)]
 
-        # Debugging: Check if filtered_points is empty
-        #print(f"Filtered points for {titles[ii]}:")
-        #print(filtered_points)
-
         # Generate grid
         x_grid, y_grid = np.meshgrid(np.unique(x), np.unique(y))
         z_grid = np.full_like(x_grid, np.nan, dtype=float)  # Initialize with NaN
@@ -179,9 +172,6 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
                     if len(idx) > 0:
                         z_grid_1[j, i] = np.mean(zz[idx])
 
-            #Debugging: Ensure `z_grid_1` is valid
-            #print(f"Filtered z_grid_1 for {titles[ii]}:")
-            #print(z_grid_1)
 
             # Add Contour or Surface Plot
             fig.add_trace(
@@ -376,22 +366,16 @@ def create_earth(radius=6371.0, resolution=50):
     return x.flatten(), y.flatten(), z.flatten()
 
 def plot_orbit(df, select):
+    if select not in ['ECI', 'ECEF']:
+        raise ValueError("Coordinates not supported. Use 'ECI' or 'ECEF'.")
+
     # Generate Earth data
     earth_x, earth_y, earth_z = create_earth()
 
-    if select == 'ECI':
-        # Satellite trajectory data
-        coord_x = df["ECI X (km)"].values
-        coord_y = df["ECI Y (km)"].values
-        coord_z = df["ECI Z (km)"].values
-        label = 'ECI'
-    elif select == 'ECEF':
-        coord_x = df["ECEF X (km)"].values
-        coord_y = df["ECEF Y (km)"].values
-        coord_z = df["ECEF Z (km)"].values
-        label = 'ECEF'
-    else:
-        print('Coordinates not supported.')
+     # Seleccionar coordenadas del satélite
+    coord_x = df[f"{select} X (km)"].values
+    coord_y = df[f"{select} Y (km)"].values
+    coord_z = df[f"{select} Z (km)"].values
 
     # Create a 3D plot
     fig = go.Figure()
@@ -401,10 +385,13 @@ def plot_orbit(df, select):
         x=earth_x.reshape(50, 50),
         y=earth_y.reshape(50, 50),
         z=earth_z.reshape(50, 50),
-        colorscale="Blues",
-        opacity=0.5,
+        surfacecolor=np.ones_like(earth_z),  # Color base
+        colorscale="Earth", 
+        opacity=0.9,
         name="Earth",
-        showscale=False
+        showscale=False,
+        lighting=dict(ambient=0.7, diffuse=0.9, specular=0.1, roughness=0.5),  # Ajustar iluminación
+        lightposition=dict(x=10000, y=10000, z=10000)
     ))
 
     # Add satellite trajectory
@@ -413,20 +400,22 @@ def plot_orbit(df, select):
         y=coord_y,
         z=coord_z,
         mode='lines',
-        line=dict(color='red', width=4),
+        line=dict(color='red', width=0.5, dash='dash'),
         name='Satellite Path'
     ))
 
     # Update layout for better visualization
     fig.update_layout(
         scene=dict(
-        xaxis_title="X (km)",
-        yaxis_title="Y (km)",
-        zaxis_title="Z (km)",
-        aspectmode="data"  # Equal aspect ratio
-    ),
-    title = f"Satellite Trajectory in {label} Coordinates with Earth",
-    showlegend=True
+            xaxis_title=f"{select} X (km)",
+            yaxis_title=f"{select} Y (km)",
+            zaxis_title=f"{select} Z (km)",
+            aspectmode="data"  # Mantener proporciones iguales
+        ),
+        title=f"Satellite Trajectory in {select} Coordinates with Earth",
+        showlegend=True,
+        margin=dict(l=0, r=0, b=0, t=40),  # Ajustar márgenes
+        legend=dict(x=0.8, y=0.9)  # Posición de la leyenda
     )
 
     # Show the plot
@@ -443,53 +432,46 @@ def plot_magField_time(df, select):
     Returns:
     - None: Displays the plot.
     """
-    # Create a figure with 3 subplots (one for each component)
-    fig, axs = plt.subplots(3, 1, figsize=(12, 8), sharex=True)
+    # Mapeo de columnas según el sistema de coordenadas
+    column_mapping = {
+        'ECI': {'Bx': 'Bx ECI (nT)', 'By': 'By ECI (nT)', 'Bz': 'Bz ECI (nT)'},
+        'ECEF': {'Bx': 'Bx ECEF (nT)', 'By': 'By ECEF (nT)', 'Bz': 'Bz ECEF (nT)'},
+        'NED': {'Bx': 'B N', 'By': 'B E', 'Bz': 'B D'}
+    }
 
-    if select == 'ECI':
-        Bx_column = 'Bx ECI (nT)'
-        By_column = 'By ECI (nT)'
-        Bz_column = 'Bz ECI (nT)'
-        label = 'ECI'
-    elif select == 'ECEF':
-        Bx_column = 'Bx ECEF (nT)'
-        By_column = 'By ECEF (nT)'
-        Bz_column = 'Bz ECEF (nT)'
-        label = 'ECEF'
-    elif select == 'NED':
-        Bx_column = 'B N'
-        By_column = 'B E'
-        Bz_column = 'B D'
-        label = 'NED'
-    else:
-        print('Not supported coordinate frame.')
-        return  # Exit the function if an unsupported coordinate frame is provided
+    # Verificar si el sistema de coordenadas es válido
+    if select not in column_mapping:
+        raise ValueError(f"Unsupported coordinate frame: {select}. Use 'ECI', 'ECEF', or 'NED'.")
 
-    # Plot each magnetic field component
-    axs[0].plot(df["Time (UTC)"], df[Bx_column], color="red")
-    axs[0].set_title(f"Component Bx in {label} coordinates (nT)")
-    axs[0].set_ylabel(Bx_column)
+    # Verificar que las columnas necesarias estén en el DataFrame
+    required_columns = [column_mapping[select]['Bx'], column_mapping[select]['By'], column_mapping[select]['Bz'], "Time (UTC)"]
+    for col in required_columns:
+        if col not in df.columns:
+            raise ValueError(f"Column '{col}' not found in DataFrame.")
 
-    axs[1].plot(df["Time (UTC)"], df[By_column], color="blue")
-    axs[1].set_title(f"Component By in {label} coordinates (nT)")
-    axs[1].set_ylabel(By_column)
+    # Crear una figura con 3 subplots (uno para cada componente)
+    fig, axs = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
 
-    axs[2].plot(df["Time (UTC)"], df[Bz_column], color="green")
-    axs[2].set_title(f"Component Bz in {label} coordinates (nT)")
-    axs[2].set_ylabel(Bz_column)
-    axs[2].set_xlabel("Time (UTC)")
+    # Colores para cada componente
+    colors = {'Bx': 'red', 'By': 'blue', 'Bz': 'green'}
 
-    # Reduce the number of ticks on the x-axis
+    # Graficar cada componente del campo magnético
+    for i, (component, column) in enumerate(zip(['Bx', 'By', 'Bz'], [column_mapping[select]['Bx'], column_mapping[select]['By'], column_mapping[select]['Bz']])):
+        axs[i].plot(df["Time (UTC)"], df[column], color=colors[component], label=f'{component} ({select})')
+        axs[i].set_title(f"Component {component} in {select} coordinates (nT)")
+        axs[i].set_ylabel(f"{component} (nT)")
+        axs[i].grid(True, alpha=0.5, linestyle='--', linewidth=0.1, color='gray')  # Personalizar la cuadrícula
+        axs[i].legend(loc='upper right')  # Añadir leyenda
+
+    # Formatear el eje X para mostrar fechas de manera más legible
+    date_format = DateFormatter("%Y-%m-%d %H:%M")
+    axs[-1].xaxis.set_major_formatter(date_format)
+    axs[-1].set_xlabel("Time (UTC)")
+    plt.xticks(rotation=45)  # Rotar las etiquetas del eje X para mejor legibilidad
+
+    # Reducir el número de ticks en el eje X
     for ax in axs:
-        ax.tick_params(axis='x', which='both', labelrotation=45)
-        ax.set_xticks(ax.get_xticks()[::10])  # Show only every 10th tick
-
-    # Adjust layout
-    plt.tight_layout()
-
-    # Display the plot
-    plt.show()
-
+        ax.set_xticks(ax.get_xticks()[::10]) 
 
 def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fixed_zaxis=True):
     """
@@ -531,7 +513,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
     lower_bound_1 = -1.5 * reference_value
     upper_bound_1 = 1.5 * reference_value
 
-    # ✅ Generate multiple contour levels for field variations
+    # Generate multiple contour levels for field variations
     range_values = np.sort(np.array([lower_bound_tol, upper_bound_tol]))
     print('reference_value: ',reference_value)
 
@@ -542,7 +524,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
         ('XZ', 'X', 'Z', x_coil_results_s[x_coil_results_s['Y'] == 0])
     ]
 
-    # ✅ Use `constrained_layout=True` to fix spacing issues
+    # Use `constrained_layout=True` to fix spacing issues
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), constrained_layout=True)
 
     for ax, (plane_name, x_label, y_label, df) in zip(axes, planes):
@@ -555,7 +537,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
         X, Y = np.meshgrid(x_vals, y_vals, indexing='ij')
         B_field = heatmap_data.values
 
-        # ✅ Plot main heatmap
+        # Plot main heatmap
         img = ax.imshow(
             heatmap_data, cmap='viridis', origin='lower',
             extent=[x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max()],
@@ -563,7 +545,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
             vmax=upper_bound_1   # 🔹 Fixed max color scale
         )
 
-        # ✅ Highlight the tolerance region using `contourf()`
+        # Highlight the tolerance region using `contourf()`
         if reference_value != 0:
             ax.contourf(
                 Y, X, B_field,
@@ -571,7 +553,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
                 colors=['red'], alpha=0.4  # Semi-transparent red highlight
             )
 
-            # ✅ Overlay standard contour lines
+            # Overlay standard contour lines
             contours = ax.contour(
                 Y, X, B_field, levels=range_values, colors='white', linewidths=1.5
             )
@@ -582,7 +564,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
                 fmt=lambda x: f"{x:.2e} T"
             )
 
-        # ✅ Transform spires for the current plane
+        # Transform spires for the current plane
         if plane_name == 'XY':
             spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 1, :]
             spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 1, :]
@@ -593,7 +575,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
             spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 2, :]
             spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 2, :]
 
-        # ✅ Plot the spires
+        # Plot the spires
         for i in range(spire1.shape[0]):
             ax.plot(spire1_x[i, :], spire1_y[i, :], color='black', linestyle='-', linewidth=4, label='Spire 1' if i == 0 else "")
             ax.plot(spire2_x[i, :], spire2_y[i, :], color='black', linestyle='-', linewidth=4, label='Spire 2' if i == 0 else "")
@@ -603,10 +585,10 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
         ax.set_ylabel(f"{y_label} (m)")
         ax.set_title(f"{index} in {plane_name} plane")
 
-    # ✅ Colorbar with proper spacing
+    # Colorbar with proper spacing
     fig.colorbar(img, ax=axes.ravel().tolist(), label=f'{index} (T)')
 
-    # ✅ No need for `plt.tight_layout()` anymore!
+    # No need for `plt.tight_layout()` anymore!
     plt.legend()
     plt.show()
 
@@ -646,34 +628,34 @@ def plot_mainAxis_field(x_coil_results_s, index='Bx'):
         ('Z', x_coil_results_s[(x_coil_results_s['X'] == 0) & (x_coil_results_s['Y'] == 0)])
     ]
 
-    # ✅ Create figure with three subplots
+    # Create figure with three subplots
     fig, axes = plt.subplots(1, 3, figsize=(18, 6), constrained_layout=True)
 
     for ax, (x_label, df) in zip(axes, lines):
-        # ✅ Filter and sort data
+        # Filter and sort data
         filtered_points = df[(df[index] >= lower_bound_tol) & (df[index] <= upper_bound_tol)].sort_values(by=x_label)
 
-        # ✅ Ensure sorted order for all data
+        # Ensure sorted order for all data
         x_values_full = np.sort(df[x_label].values)
         bx_values_full = df[index].values[np.argsort(df[x_label].values)]
 
         x_values_filtered = np.sort(filtered_points[x_label].values) if not filtered_points.empty else []
         bx_values_filtered = filtered_points[index].values[np.argsort(filtered_points[x_label].values)] if not filtered_points.empty else []
 
-        # ✅ Plot full dataset
+        # Plot full dataset
         ax.plot(x_values_full, bx_values_full, marker='o', linestyle='-', label='All Data')
 
-        # ✅ Overlay the filtered tolerance region
+        # Overlay the filtered tolerance region
         ax.plot(x_values_filtered, bx_values_filtered, marker='.', linestyle='-', color='red', label='Filtered Range')
 
-        # ✅ Set dynamic labels and title
+        # Set dynamic labels and title
         ax.set_xlabel(f"{x_label} (m)")
         ax.set_ylabel(f"{index} (T)")
         ax.set_title(f"{index} vs {x_label}")
         ax.legend()
         ax.grid(True)
 
-    # ✅ Show the figure
+    # Show the figure
     plt.show()
 
 
