@@ -10,6 +10,11 @@ from tqdm import tqdm
 
 # Define global constants
 MU_0 = 4 * np.pi * 1e-7  # Permeability of free space
+rotz_180 = np.array([
+    [-1, 0, 0],
+    [0, -1, 0],
+    [0, 0, 1]
+])
 
 # Coil parameters definition
 class CoilParameters:
@@ -246,11 +251,11 @@ def star_spires(A, h, r, num_seg, star_points=6):
     sides = np.array(groups)
 
     # Apply transformation matrix A to the first spire
-    spire1 = np.einsum('ij,ljk->lik', A, sides)
+    spire1 = np.einsum('ij,ljk->lik', np.dot(A, rotz_180), sides)
     
     # Compute coordinates for the second spire (shifted by -h along x-axis before transformation)
     displacement = np.array([h, 0, 0]).reshape(3, 1)
-    spire2 = np.einsum('ij,ljk->lik', A, sides - displacement)
+    spire2 = np.einsum('ij,ljk->lik', np.dot(A, rotz_180), sides - displacement)
     
     return spire1, spire2
 
