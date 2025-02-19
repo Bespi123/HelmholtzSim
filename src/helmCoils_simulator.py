@@ -10,6 +10,11 @@ from tqdm import tqdm
 
 # Define global constants
 MU_0 = 4 * np.pi * 1e-7  # Permeability of free space
+rotz_180 = np.array([
+    [-1, 0, 0],
+    [0, -1, 0],
+    [0, 0, 1]
+])
 
 # Coil parameters definition
 class CoilParameters:
@@ -200,7 +205,7 @@ def star_spires(A, h, r, num_seg, star_points=6):
     seg_per_edge = total_num_seg // total_vertices  # Ensure integer division
     
     # Generate angles for each vertex
-    angles = np.linspace(2 * np.pi, 0, total_vertices, endpoint=False)
+    angles = np.linspace(0, 2*np.pi, total_vertices, endpoint=False)
     
     # Alternating radii for outer and inner points
     radii = np.empty(total_vertices)
@@ -246,11 +251,11 @@ def star_spires(A, h, r, num_seg, star_points=6):
     sides = np.array(groups)
 
     # Apply transformation matrix A to the first spire
-    spire1 = np.einsum('ij,ljk->lik', A, sides)
+    spire1 = np.einsum('ij,ljk->lik', np.dot(A, rotz_180), sides)
     
     # Compute coordinates for the second spire (shifted by -h along x-axis before transformation)
     displacement = np.array([h, 0, 0]).reshape(3, 1)
-    spire2 = np.einsum('ij,ljk->lik', A, sides - displacement)
+    spire2 = np.einsum('ij,ljk->lik', np.dot(A, rotz_180), sides - displacement)
     
     return spire1, spire2
 
@@ -272,7 +277,7 @@ def polygonal_spires(A, h, r, num_seg, n=5):
     seg_per_edge = total_num_seg // n  # Puntos por arista
     
     # Generar vértices equiespaciados
-    angles = np.linspace(2 * np.pi, 0, n, endpoint=False)
+    angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
     y_vertices = r * np.sin(angles)
     z_vertices = r * np.cos(angles)
     
@@ -301,8 +306,8 @@ def polygonal_spires(A, h, r, num_seg, n=5):
     sides = np.array(groups)
     
     # Aplicar transformaciones
-    spire1 = np.einsum('ij,ljk->lik', A, sides)
-    spire2 = np.einsum('ij,ljk->lik', A, sides - np.array([h, 0, 0]).reshape(3, 1))
+    spire1 = np.einsum('ij,ljk->lik', np.dot(A, rotz_180), sides)
+    spire2 = np.einsum('ij,ljk->lik', np.dot(A, rotz_180), sides - np.array([h, 0, 0]).reshape(3, 1))
     
     return spire1, spire2
 
