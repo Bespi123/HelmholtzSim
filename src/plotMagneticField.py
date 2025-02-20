@@ -460,7 +460,7 @@ def plot_magField_time(df, select):
         axs[i].plot(df["Time (UTC)"], df[column], color=colors[component], label=f'{component} ({select})')
         axs[i].set_title(f"Component {component} in {select} coordinates (nT)")
         axs[i].set_ylabel(f"{component} (nT)")
-        axs[i].grid(True, alpha=0.5, linestyle='--', linewidth=0.1, color='gray')  # Personalizar la cuadrícula
+        axs[i].grid(True, alpha=1, linestyle='--', linewidth=0.1, color='gray')  # Personalizar la cuadrícula
         axs[i].legend(loc='upper right')  # Añadir leyenda
 
     # Formatear el eje X para mostrar fechas de manera más legible
