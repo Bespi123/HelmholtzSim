@@ -337,38 +337,59 @@ class CoilParameters:
                 f"N={self.N}, I={self.I}, A_shape={self.A.shape})")
 
 
-def generate_range(a, step_size):
+def generate_range(x_range, y_range=None, z_range=None, step_size_x=0.1, step_size_y=None, step_size_z=None):
     """
-    Generates a sorted NumPy array of values ranging from -2*a to 2*a with a specified step size.
-    Includes critical points -2*a, 0, and 2*a.
-    
+    Generates a sorted NumPy array of values covering the given ranges with a specified step size.
+    If only x_range is provided, y_range and z_range will be set to x_range.
+    If only step_size_x is provided, step_size_y and step_size_z will be set to step_size_x.
+
     Parameters:
-        a (float): Half the Helmholtz testbed length side.
-        step_size (float): Step size for generating the range of values.
-    
+        x_range, y_range, z_range (tuple): (min, max) values for each axis.
+        step_size_x, step_size_y, step_size_z (float): Step sizes for each axis.
+
     Returns:
-        X_unique, Y_unique, Z_unique (numpy.ndarray): Unique points in the XY, YZ, and XZ planes.
+        X_unique, Y_unique, Z_unique (numpy.ndarray): Unique coordinates in the XY, YZ, and XZ planes.
     """
+    # If y_range and z_range are not provided, set them equal to x_range
+    if y_range is None:
+        y_range = [-0, 0]
+    if z_range is None:
+        z_range = [-0, 0]
+
+    # If step_size_y and step_size_z are not provided, set them equal to step_size_x
+    if step_size_y is None:
+        step_size_y = step_size_x
+    if step_size_z is None:
+        step_size_z = step_size_x
+
     # Generate values from -2*a to 2*a with a step size of step_size
-    range_vals = np.arange(-2 * a, 2 * a + step_size, step_size)
+    range_vals_x = np.arange(x_range[0], x_range[1] + step_size_x, step_size_x)
+    range_vals_y = np.arange(y_range[0], y_range[1] + step_size_y, step_size_y)
+    range_vals_z = np.arange(z_range[0], z_range[1] + step_size_z, step_size_z)
     
     # Ensure critical points (-2*a, 0, and 2*a) are included in the range
-    critical_vals = np.array([-2 * a, 0, 2 * a])
-    range_vals = np.unique(np.concatenate((range_vals, critical_vals)))
+    critical_vals_x = np.array([x_range[0], 0, x_range[1]])
+    critical_vals_y = np.array([y_range[0], 0, y_range[1]])
+    critical_vals_z = np.array([z_range[0], 0, z_range[1]])
+    range_vals_x = np.unique(np.concatenate((range_vals_x, critical_vals_x)))
+    range_vals_y = np.unique(np.concatenate((range_vals_y, critical_vals_y)))
+    range_vals_z = np.unique(np.concatenate((range_vals_z, critical_vals_z)))
     
     # Create a meshgrid for the XY, YZ, and XZ planes
-    X, Y = np.meshgrid(range_vals, range_vals)
+    X, Y = np.meshgrid(range_vals_x, range_vals_y)
     
     # Points in the XY plane (Z = 0)
     X_xy, Y_xy = X.flatten(), Y.flatten()
     Z_xy = np.zeros_like(X_xy)
     
     # Points in the YZ plane (X = 0)
-    Y_yz, Z_yz = X.flatten(), Y.flatten()
+    Y, Z = np.meshgrid(range_vals_y, range_vals_z)    
+    Y_yz, Z_yz = Y.flatten(), Z.flatten()
     X_yz = np.zeros_like(Y_yz)
     
     # Points in the XZ plane (Y = 0)
-    X_xz, Z_xz = X.flatten(), Y.flatten()
+    X, Z = np.meshgrid(range_vals_x, range_vals_z)    
+    X_xz, Z_xz = X.flatten(), Z.flatten()
     Y_xz = np.zeros_like(X_xz)
     
     # Concatenate all points
