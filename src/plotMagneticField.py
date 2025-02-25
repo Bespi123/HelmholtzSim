@@ -246,7 +246,7 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
     fig.show()
 
 
-def plot_spires(fig, spire1, spire2, color='black', label='X-spires (m)', row=None, col=None):
+def plot_spires(fig, spires, color='black', label='X-spires (m)', row=None, col=None):
     """
     Add spires to an existing Plotly figure. If fig is None, create a new figure.
     
@@ -254,7 +254,7 @@ def plot_spires(fig, spire1, spire2, color='black', label='X-spires (m)', row=No
 
     Parameters:
     - fig (go.Figure or None): Existing Plotly figure. Creates a new one if None.
-    - spire1, spire2 (numpy.ndarray): Arrays representing the spires (shape: (4, 3, 100)).
+    - spires (list of numpy.ndarray): List of arrays representing the spires (each with shape (4, 3, 100)).
     - color (str): Color of the spires.
     - label (str): Label for the legend.
     - row (int, optional): Row index for subplots (ignored if fig has no subplots).
@@ -270,35 +270,29 @@ def plot_spires(fig, spire1, spire2, color='black', label='X-spires (m)', row=No
     # Detect if fig has subplots
     has_subplots = hasattr(fig, 'layout') and hasattr(fig.layout, 'grid') and fig.layout.grid is not None
 
-    # Transpose spires from (4,3,100) to (4,100,3)
-    spire1 = spire1.transpose(0, 2, 1)  # (4, 100, 3)
-    spire2 = spire2.transpose(0, 2, 1)  # (4, 100, 3)
+    for i, spire in enumerate(spires):  # Ensure we loop through all spires
+        # Transpose spire from (4, 3, 100) to (4, 100, 3)
+        spire = spire.transpose(0, 2, 1)  # Shape: (4, 100, 3)
 
-    # Flatten to (num_points, 3) per spire
-    spire1_flat = spire1.reshape(-1, 3)  # (400, 3)
-    spire2_flat = spire2.reshape(-1, 3)  # (400, 3)
+        # Flatten to (num_points, 3)
+        spire_flat = spire.reshape(-1, 3)  # Shape: (400, 3)
 
-    # Create Scatter3D traces
-    trace1 = go.Scatter3d(
-        x=spire1_flat[:, 0], y=spire1_flat[:, 1], z=spire1_flat[:, 2],
-        mode='lines', line=dict(color=color, width=4),
-        name=label, legendgroup=label, showlegend=True
-    )
-    trace2 = go.Scatter3d(
-        x=spire2_flat[:, 0], y=spire2_flat[:, 1], z=spire2_flat[:, 2],
-        mode='lines', line=dict(color=color, width=4),
-        name=label, legendgroup=label, showlegend=False
-    )
+        # Create Scatter3D trace for each spire
+        trace = go.Scatter3d(
+            x=spire_flat[:, 0], y=spire_flat[:, 1], z=spire_flat[:, 2],
+            mode='lines', line=dict(color=color, width=4),
+            name=label if i == 0 else None,  # Show legend only for the first spire
+            legendgroup=label, showlegend=(i == 0)  # Group legends to avoid duplicates
+        )
 
-    # If fig has subplots, add traces to the correct subplot
-    if has_subplots and row is not None and col is not None:
-        fig.add_trace(trace1, row=row, col=col)
-        fig.add_trace(trace2, row=row, col=col)
-    else:
-        fig.add_trace(trace1)
-        fig.add_trace(trace2)
+        # If fig has subplots, add trace to the correct subplot
+        if has_subplots and row is not None and col is not None:
+            fig.add_trace(trace, row=row, col=col)
+        else:
+            fig.add_trace(trace)
 
     return fig
+
 
 
 def plot_grid(X, Y, Z, fig):
