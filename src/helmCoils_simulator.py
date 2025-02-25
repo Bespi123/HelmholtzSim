@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
+from typing import Union
 
 #from scipy.optimize import minimize  # Optimization function from SciPy
 #import parallel_test4 as simulation  # Custom simulation module
@@ -16,17 +17,141 @@ rotz_180 = np.array([
     [0, 0, 1]
 ])
 
-# Coil parameters definition
 class CoilParameters:
-    def __init__(self, length, height, turns):
-        # Initialize the length of the Helmholtz testbed side
-        self.L = np.array(length)   # Helmholtz testbed-length side
-        # Calculate and store half the Helmholtz testbed length side
-        self.a = self.L / 2         # Half Helmholtz testbed length side
-        # Initialize the separation between Helmholtz coils
-        self.h = np.array(height)   # Separation among Helmholtz coils
-        # Initialize the number of turns in the Helmholtz coils
-        self.N = np.array(turns)    # Number of turns in Helmholtz coils
+    def __init__(self, coils_number: int, length: Union[float, list, np.ndarray], 
+                 height: Union[float, list, np.ndarray], turns: Union[int, list, np.ndarray], 
+                 current: float, rot_matrix: np.ndarray):
+        """
+        Initialize Helmholtz coil parameters.
+
+        Args:
+            coils_number (int): Number of Helmholtz coils.
+            length (float | list | np.ndarray): Length(s) of the Helmholtz testbed side.
+            height (float | list | np.ndarray): Distance(s) between Helmholtz coils.
+            turns (int | list | np.ndarray): Number of turns in each coil.
+            current (float): Electric current applied to the coils.
+            rot_matrix (np.ndarray): Rotation matrix for coordinate transformation.
+        """
+        # Convert inputs to NumPy arrays
+        self.L = np.atleast_1d(length)  
+        self.h = np.atleast_1d(height)   
+        self.N = np.atleast_1d(turns) if isinstance(turns, (list, np.ndarray)) else np.array([turns])  
+        self.I = current
+        self.A = rot_matrix
+
+        # Other parameters
+        self.coils_number = coils_number
+        
+        # Validate and expand `length`
+        if self.L.shape[0] not in {1, coils_number}:
+            raise ValueError(f"Invalid length size. Expected 1 or {coils_number}, got {self.L.shape[0]}")
+        elif self.L.shape[0] == 1:
+            self.L = self.L[0] * np.ones((coils_number,))
+
+        # Validate and expand `height`
+        if self.h.shape[0] not in {1, coils_number - 1}:
+            raise ValueError(f"Invalid height size. Expected 1 or {coils_number - 1}, got {self.h.shape[0]}")
+        elif self.h.shape[0] == 1:
+            self.h = self.h[0] * np.ones((coils_number - 1,))
+
+        # Validate and expand `turns`
+        if self.N.shape[0] not in {1, coils_number}:
+            raise ValueError(f"Invalid turns size. Expected 1 or {coils_number}, got {self.N.shape[0]}")
+        elif self.N.shape[0] == 1:
+            self.N = self.N[0] * np.ones((coils_number,), dtype=int)
+
+        # Validate `rot_matrix`
+        if self.A.shape != (3, 3):
+            raise ValueError(f"Invalid rotation matrix shape. Expected (3,3), got {self.A.shape}")
+        
+        self.a = self.L / 2  # Half Helmholtz testbed length side
+        self.pos =  self.get_spires_position()
+
+    def get_spires_position(self):
+        """
+        Compute the positions of the spires in the Helmholtz coil system.
+
+        Returns:
+            np.ndarray: Array with computed positions.
+        """
+        coils_number = self.coils_number  # Number of coils
+        h = self.h  # Heights between coils
+
+        # Initialize arrays with NaN values
+        d = np.full(coils_number, np.nan)   # Temporary array for displacement values
+        d1 = np.full(coils_number, np.nan)  # Final array for cumulative positions
+
+        o = coils_number // 2  # Compute middle index (integer division)
+
+        # Compute displacement values for each coil except the last one
+        for j in range(coils_number - 1):
+            if j < o - (coils_number % 2 == 0):  
+                # For coils before the middle point
+                d[j] = -h[j]  
+            elif j == o - (coils_number % 2 == 0):  
+                # Middle coil case: If even, split height; if odd, set zero
+                d[j] = -h[j] / 2 if coils_number % 2 == 0 else 0
+                d[j + 1] = h[j] / 2 if coils_number % 2 == 0 else h[j]
+            else:
+                # For coils after the middle point
+                d[j + 1] = h[j]              
+
+        # Compute cumulative positions
+        for j in range(coils_number):
+            if j <= o - (coils_number % 2 == 0):  
+                # Sum displacements from current position to the middle point
+                d1[j] = np.sum(d[j:o - (coils_number % 2 == 0) + 1]) 
+            else:
+                # Sum displacements from the middle point onward
+                d1[j] = np.sum(d[o - (coils_number % 2 == 0) + 1:j + 1]) 
+
+        return d1  # Return computed coil positions
+
+    def square_spires(self, num_seg, b=None):
+        """
+        Generates coordinates for multiple square or rectangular coils in 3D space, transformed by matrix A.
+
+        Parameters:
+        num_seg (int): Number of segments per side.
+        b (float, optional): Half the vertical side length (along the Z-axis). If not provided, b = a (square).t
+
+        Returns:
+            list: List of arrays, each representing a coil shape (4, 3, num_seg).
+        """
+        # Use `b = a` if not provided
+        b = np.atleast_1d(b) if b is not None else self.a
+
+        spires = []
+
+        for i in range(self.coils_number):
+            h = self.h[i] if i < self.h.shape[0] else self.h[i-1]
+            L0_half = self.a[i]
+            L1_half = b[i]
+
+            # Generate evenly spaced points for the y and z coordinates along the square sides
+            y_coords = np.linspace(L0_half, -L0_half, num_seg)
+            z_coords = np.linspace(-L1_half, L1_half, num_seg)
+
+            # Define the 3D coordinates of the four sides of a square coil
+            spire = np.array([
+                [np.zeros(num_seg), y_coords, L1_half * np.ones(num_seg)],   # Top edge
+                [np.zeros(num_seg), -L0_half * np.ones(num_seg), -z_coords], # Right edge
+                [np.zeros(num_seg), -y_coords, -L1_half * np.ones(num_seg)], # Bottom edge
+                [np.zeros(num_seg), L0_half * np.ones(num_seg), z_coords]    # Left edge
+            ])
+
+            displacement = np.array([self.pos[i], 0, 0]).reshape(3, 1)
+
+            # Transform the coordinates of the second coil using the matrix A and apply the displacement
+            spire = np.einsum('ij,ljk->lik', self.A, spire - displacement[None,: , :])
+
+            spires.append(spire)
+        return spires
+    
+    def __repr__(self):
+        return (f"CoilParameters(coils_number={self.coils_number}, L={self.L}, h={self.h}, "
+                f"N={self.N}, I={self.I}, A_shape={self.A.shape})")
+
 
 
 
@@ -79,56 +204,6 @@ def generate_range(a, step_size):
     X_unique, Y_unique, Z_unique = unique_points[:, 0], unique_points[:, 1], unique_points[:, 2]
     
     return X_unique, Y_unique, Z_unique
-
-
-def square_spires(A, h, a, num_seg, b=None):
-    """
-    Generates coordinates for two square or rectangular coils in 3D space, transformed by matrix A.
-
-    Parameters:
-        A (ndarray): 3x3 transformation matrix.
-        h (float): Separation between the coils (along the X-axis).
-        a (float): Half the horizontal side length (along the Y-axis).
-        num_seg (int): Number of segments per side.
-        b (float, optional): Half the vertical side length (along the Z-axis). If not provided, b = a (square).
-
-    Returns:
-        tuple: (spire1, spire2) arrays of shape (4, 3, num_seg).
-    """
-    # If b is not provided, use b = a (square)
-    if b is None:
-        b = a
-
-    # Calculate half the separation distance between the two coils
-    h_half = h / 2
-    
-    L0_half = a
-    L1_half = b
-
-    # Generate evenly spaced points for the y and z coordinates along the square sides
-    y_coords = np.linspace(L0_half, -L0_half, num_seg)
-    z_coords = np.linspace(-L1_half, L1_half, num_seg)
-    
-    # Define the 3D coordinates of the four sides of a square coil
-    sides = np.array([
-        [h_half * np.ones(num_seg), y_coords, L1_half * np.ones(num_seg)],  # Side 1: top edge
-        [h_half * np.ones(num_seg), -L0_half * np.ones(num_seg), -z_coords], # Side 2: right edge
-        [h_half * np.ones(num_seg), -y_coords, -L1_half * np.ones(num_seg)], # Side 3: bottom edge
-        [h_half * np.ones(num_seg), L0_half * np.ones(num_seg), z_coords]   # Side 4: left edge
-    ])
-    
-    # Transform the coordinates of the first coil using the matrix A
-    spire1 = np.einsum('ij,ljk->lik', A, sides)
-    
-    # Create a displacement vector to position the second coil
-    displacement = np.array([h, 0, 0]).reshape(3, 1)
-    
-    # Transform the coordinates of the second coil using the matrix A and apply the displacement
-    spire2 = np.einsum('ij,ljk->lik', A, sides - displacement[None, :, :])
-    
-    # Return the 3D coordinates of both square coils
-    return spire1, spire2
-
 
 def circular_spires(A, h, r, num_seg):
     """
