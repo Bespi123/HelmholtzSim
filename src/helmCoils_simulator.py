@@ -125,7 +125,6 @@ class CoilParameters:
         spires = []
 
         for i in range(self.coils_number):
-            h = self.h[i] if i < self.h.shape[0] else self.h[i-1]
             L0_half = self.a[i]
             L1_half = b[i]
 
@@ -145,109 +144,93 @@ class CoilParameters:
 
             # Transform the coordinates of the second coil using the matrix A and apply the displacement
             spire = np.einsum('ij,ljk->lik', self.A, spire - displacement[None,: , :])
-
             spires.append(spire)
+            
+        spires = np.array(spires)
+        spires = spires.transpose(0, 2, 1, 3).reshape(self.coils_number, 3, -1)
+
         return spires
-    
-    
 
     def circular_spires(self, num_seg):
         """
-        Generates coordinates of two circular coils (spirals) in 3D space, divided into four quadrants.
-    
+        Generates coordinates of multiple circular coils (spirals) in 3D space.
+
         Parameters:
-            num_seg (int): Number of segments per side.
-    
+            num_seg (int): Number of segments for the full spiral.
+
         Returns:
-            list: List of arrays, each representing a coil shape (4, 3, num_seg).
+            np.ndarray: Array of shape (num_coils, 3, 4*num_seg) containing the coils.
         """
         spires = []
 
         for i in range(self.coils_number):
-            r = self.L[i] / 2
+            r = self.L[i] / 2  # Radio del círculo
 
-            # Generate angle values for the circular motion (theta)
-            theta_vals = 2 * np.pi - np.linspace(0, 2 * np.pi, 4 * num_seg)  # Full circle (360°)
-    
-            # Parametrize the circular spiral in 3D space
-            x_coords = np.zeros(4 * num_seg)                    # x remains constant
-            y_coords = r * np.sin(theta_vals)    # y = r * sin(theta), circular pattern in the y-direction
-            z_coords = r * np.cos(theta_vals)    # z = r * cos(theta), circular pattern in the z-direction
-    
-            # Stack the coordinates into a 2D array (shape: [4*num_seg, 3])
-            spiral_coords = np.array([x_coords, y_coords, z_coords]).T
-    
-            # Divide the spiral into four quadrants, each containing `num_seg` points
-            half_num_seg = num_seg
-            sides = np.array([
-                spiral_coords[:half_num_seg],           # First quadrant
-                spiral_coords[half_num_seg:2*half_num_seg],  # Second quadrant
-                spiral_coords[2*half_num_seg:3*half_num_seg],  # Third quadrant
-                spiral_coords[3*half_num_seg:],        # Fourth quadrant
-            ])
-    
-            # Transpose the sides to match the required shape for transformation (shape: [4, 3, num_seg])
-            sides = sides.transpose(0, 2, 1)
+            # Generar ángulos para una circunferencia completa (espiral continua)
+            theta_vals = np.linspace(0, 2 * np.pi, 4 * num_seg, endpoint=False)  
+
+            # Parametrización de la espiral
+            x_coords = np.zeros(4 * num_seg)  # x permanece constante
+            y_coords = r * np.sin(theta_vals)  
+            z_coords = r * np.cos(theta_vals)  
+
+            # Formar la matriz de coordenadas con forma (3, 4*num_seg)
+            spire = np.array([x_coords, y_coords, z_coords])
 
             displacement = np.array([self.pos[i], 0, 0]).reshape(3, 1)
-            
-            # Transform the coordinates of the second coil using the matrix A and apply the displacement
-            spire = np.einsum('ij,ljk->lik', self.A, sides - displacement[None,: , :])
+
+            # Aplicar transformación con matriz A y desplazar
+            spire = np.einsum('ij,jk->ik', self.A, spire - displacement)
 
             spires.append(spire)
-    
-        # Return the coordinates of both spirals
-        return spires
+
+        return np.array(spires)  # Devuelve un array con forma (num_coils, 3, 4*num_seg)
+
     
     def polygonal_spires(self, num_seg, n=5):
         """
-        Generates coordinates for two polygonal coils in 3D, divided into 4 equal groups.
+        Generates coordinates for multiple polygonal coils in 3D.
 
         Parameters:
-            num_seg (int): Total number of segments to distribute along all edges.
+            num_seg (int): Total number of segments.
             n (int): Number of sides of the polygon (e.g., 5 = pentagon).
 
         Returns:
-            list: A list containing transformed coordinates of the polygonal spirals, divided into four quadrants.
+            numpy.ndarray: Array of shape (num_coils, 3, total_num_seg).
         """
-        total_num_seg = 4 * num_seg
-        seg_per_edge = round(total_num_seg / n)  # Avoid loss of points
+        total_num_seg = n * num_seg  # Ensure all sides have an equal number of points
+        angles = np.linspace(0, 2 * np.pi, n, endpoint=False)  # Polygon vertex angles
 
-        # Generate evenly spaced vertices
-        angles = np.linspace(0, 2 * np.pi, n, endpoint=False)
         spires = []
 
-        for coil_idx in range(self.coils_number):  # Avoid overwriting `i`
+        for coil_idx in range(self.coils_number):
             r = self.L[coil_idx] / 2
             y_vertices = r * np.sin(angles)
             z_vertices = r * np.cos(angles)
 
-            # Close the polygon
+            # Close the polygon by repeating the first vertex at the end
             y_closed = np.append(y_vertices, y_vertices[0])
             z_closed = np.append(z_vertices, z_vertices[0])
 
-            # Generate edges
-            poly_edges = []
-            for j in range(n):  # Use `j` instead of `i`
-                y_edge = np.linspace(y_closed[j], y_closed[j+1], seg_per_edge)
-                z_edge = np.linspace(z_closed[j], z_closed[j+1], seg_per_edge)
-                x_edge = np.zeros(seg_per_edge)
-                poly_edges.append(np.vstack((x_edge, y_edge, z_edge)).T)
-        
-            poly_edges = np.array(poly_edges).reshape(-1, 3)
+            # Generate all edges continuously
+            all_edges = []
+            for j in range(n):
+                y_edge = np.linspace(y_closed[j], y_closed[j+1], num_seg)
+                z_edge = np.linspace(z_closed[j], z_closed[j+1], num_seg)
+                x_edge = np.zeros(num_seg)
+                all_edges.append(np.vstack((x_edge, y_edge, z_edge)))  # Shape (3, num_seg)
 
-            # Split edges into 4 quadrants dynamically
-            groups = np.array_split(poly_edges, 4)
-
-            sides = np.array([g.T for g in groups])  # Shape: [4, 3, points_per_group]
+            spire = np.hstack(all_edges)  # Final shape (3, total_num_seg)
 
             displacement = np.array([self.pos[coil_idx], 0, 0]).reshape(3, 1)
 
-            # Transform the coordinates using matrix A and apply displacement
-            spire = np.einsum('ij,ljk->lik', np.dot(self.A, rotz_180), sides - displacement[None, :, :])
+            # Apply transformation
+            spire = np.einsum('ij,jk->ik', np.dot(self.A, rotz_180), spire - displacement)
+
             spires.append(spire)
 
-        return spires
+        return np.array(spires)  # Shape: (num_coils, 3, total_num_seg)
+
 
     def star_spires(self, num_seg, star_points=6):
         """
@@ -303,32 +286,15 @@ class CoilParameters:
                 edge_coords = np.vstack((x_edge, y_edge, z_edge)).T
                 star_edges.append(edge_coords)
         
-            # Convert list of edges to a numpy array (shape: [total_vertices, seg_per_edge, 3])
+            # Convert list of edges to a numpy array (shape: [3, total_vertices*seg_per_edge])
             star_edges = np.array(star_edges)
-            star_edges = star_edges.reshape(-1, 3)
-        
-            points_per_group = np.size(star_edges,0) // 4
-
-            groups = []
-            for i in range(4):
-                # Select the edges for the current group
-                group_edges = star_edges[i*points_per_group : (i+1)*points_per_group]
-                # Combine all points in these edges into a single array (shape: [edges_per_group * seg_per_edge, 3])
-                group_points = group_edges.reshape(-1, 3)
-                # Transpose to shape (3, edges_per_group * seg_per_edge) for transformation
-                groups.append(group_points.T)
-        
-            # Convert groups to a numpy array (shape: [4, 3, group_points_per_group])
-            sides = np.array(groups)
-
-            # Apply transformation matrix A to the first spire
-            #spire1 = np.einsum('ij,ljk->lik', np.dot(A, rotz_180), sides)
+            sides = star_edges.reshape(-1, 3).T
         
             # Compute coordinates for the second spire (shifted by -h along x-axis before transformation)
             displacement = np.array([self.pos[coil_idx], 0, 0]).reshape(3, 1)
-            spire = np.einsum('ij,ljk->lik', np.dot(self.A, rotz_180), sides - displacement)
+            spire = np.einsum('ij,jk->ik', np.dot(self.A, rotz_180), sides - displacement)
             spires.append(spire)
-
+        spires = np.array(spires)
         return spires
 
 
@@ -341,7 +307,7 @@ def generate_range(x_range, y_range=None, z_range=None, step_size_x=0.1, step_si
     """
     Generates a sorted NumPy array of values covering the given ranges with a specified step size.
     If only x_range is provided, y_range and z_range will be set to x_range.
-    If only step_size_x is provided, step_size_y and step_size_z will be set to step_size_x.
+    If only step_size_x is provided, step_size_y and step_size_z will be set to [-0, 0].
 
     Parameters:
         x_range, y_range, z_range (tuple): (min, max) values for each axis.
@@ -423,6 +389,7 @@ def calculate_field(args):
         numpy.ndarray: The magnetic field vector (shape: (3,)).
     """
     A1, P, side = args
+
     B = np.zeros(3)  # Initialize the magnetic field vector to zero
     dl = np.diff(side, axis=2)  # Differential length elements for each segment of the coil
     
@@ -431,6 +398,9 @@ def calculate_field(args):
         # Loop over each differential length element in the current side
         for j in range(dl.shape[2]):
             # Vector from the differential element to the point of interest
+            print("P shape", P.shape)
+            print("side shape", side.shape)
+            
             R = P - side[k, :, j]
             
             # Calculate the contribution to the magnetic field (Biot-Savart Law)
@@ -459,7 +429,7 @@ def magnetic_field_square_coil_parallel(P, N, I, coils, n):
     """
     # Proportionality constant from the Biot-Savart Law
     A1 = (N * MU_0 * I) / (4 * np.pi)
-
+    
     # Use multiprocessing to calculate in parallel
     with Pool(processes=cpu_count()) as pool:
         B_segments = []  # List to store magnetic field results for each observation point
@@ -468,7 +438,7 @@ def magnetic_field_square_coil_parallel(P, N, I, coils, n):
         for i in range(P.shape[0]):  # P has m rows, each representing a point in space
             # Prepare arguments for each segment of the coil
             args = [(A1, P[i, :], coils[j:j+n, :, :]) for j in range(0, coils.shape[0], n)]
-            
+
             # Compute the magnetic field in parallel for coil segments
             B_segments.append(pool.map(calculate_field, args))
 
@@ -479,7 +449,7 @@ def magnetic_field_square_coil_parallel(P, N, I, coils, n):
     return np.array(B_results)
 
 
-def coil_simulation_1d_sequential(X, Y, Z, coil_params, current, spires_list, parallel_coils, batch_size, enable_progress_bar=True):
+def coil_simulation_1d_parallel(X, Y, Z, coil_params, current, spires_list, parallel_coils, batch_size, enable_progress_bar=True):
     """
     Simulates the magnetic field generated by two coils on a 1D grid in three orthogonal planes.
 
@@ -499,19 +469,13 @@ def coil_simulation_1d_sequential(X, Y, Z, coil_params, current, spires_list, pa
     #X, Y = generate_range(coil_params.a, grid_number)
     
     result = []  # List to store the simulation results
-    coils = np.concatenate([spire[np.newaxis, ...] for spire in spires_list], axis=0)
-    #coils = np.concatenate([coil1, coil2], axis=0)  # Combine both coils into a single array
-    #print(f"Shape of concatenated coils: {coils.shape}") 
+
+    coils = np.concatenate(spires_list, axis=0)  # Merge along the first axis
 
     # Flatten X and Y arrays for easier iteration over the grid points
     X_flat = X.flatten()
     Y_flat = Y.flatten()
     Z_flat = Z.flatten()
-
-    if X.ndim > 1:
-        m = X.shape[1]  # Number of columns in X and Y (3 in this example)
-    else:
-        m = 1
 
     # Calculate the total number of iterations for progress tracking
     num_iter = len(X_flat) + len(Y_flat) + len(Z_flat)
@@ -524,7 +488,7 @@ def coil_simulation_1d_sequential(X, Y, Z, coil_params, current, spires_list, pa
         Y_batch = Y_flat[k: k + batch_size]  # Batch of Y coordinates
         Z_batch = Z_flat[k: k + batch_size]  # Batch of Y coordinates
 
-       # Generate 3D points for each batch in three orthogonal planes
+        # Generate 3D points for each batch in three orthogonal planes
         P_batch = np.stack([X_batch, Y_batch, Z_batch], axis=1)
 
         # Calculate the magnetic field at the batch points

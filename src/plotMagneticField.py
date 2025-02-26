@@ -270,13 +270,9 @@ def plot_spires(fig, spires, color='black', label='X-spires (m)', row=None, col=
     # Detect if fig has subplots
     has_subplots = hasattr(fig, 'layout') and hasattr(fig.layout, 'grid') and fig.layout.grid is not None
 
-    for i, spire in enumerate(spires):  # Ensure we loop through all spires
-        # Transpose spire from (4, 3, 100) to (4, 100, 3)
-        spire = spire.transpose(0, 2, 1)  # Shape: (4, 100, 3)
-
-        # Flatten to (num_points, 3)
-        spire_flat = spire.reshape(-1, 3)  # Shape: (400, 3)
-
+    for i in range(spires.shape[0]):  # Ensure we loop through all spires
+        spire_flat=spires[i,:,:].T
+    
         # Create Scatter3D trace for each spire
         trace = go.Scatter3d(
             x=spire_flat[:, 0], y=spire_flat[:, 1], z=spire_flat[:, 2],
