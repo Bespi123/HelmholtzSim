@@ -72,7 +72,7 @@ def plot_magnetic_field(x_coil_results):
     plt.tight_layout()
     plt.show()
 
-def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed_zaxis=False):
+def simple_3d_surface_plot(x_coil_results, spires, index='Bx', use_fixed_zaxis=False):
     
     # Variables to store min and max values for automatic z-axis adjustment
     global_min_z = float('inf')
@@ -188,15 +188,13 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
             )
 
          # Apply the flag-controlled z-axis range
-        spire11=np.einsum('ij,ljk->lik', A, spire1)
-        spire22=np.einsum('ij,ljk->lik', A, spire2)
+        spire11=np.einsum('ij,ljk->lik', A, spires)
+        #spire22=np.einsum('ij,ljk->lik', A, spire2)
 
          # Compute spires' z min/max and update global range
-        spire_z_min = np.nanmin([np.nanmin(spire11[..., 2]), np.nanmin(spire22[..., 2])])
-        spire_z_max = np.nanmax([np.nanmax(spire11[..., 2]), np.nanmax(spire22[..., 2])])
+        spire_z_min = np.nanmin([np.nanmin(spire11[..., 2])])
+        spire_z_max = np.nanmax([np.nanmax(spire11[..., 2])])
 
-
-        
         global_min_z = min(global_min_z, spire_z_min)
         global_max_z = max(global_max_z, spire_z_max)
 
@@ -216,7 +214,7 @@ def simple_3d_surface_plot(x_coil_results, spire1, spire2, index='Bx', use_fixed
             row=1, col=ii + 1  
         )
 
-        plot_spires(fig, spire11, spire22, color='black', label='X-spires (m)', row=row, col=col)
+        plot_spires(fig, spire11, color='black', label='X-spires (m)', row=row, col=col)
 
     fig.update_layout(
         title="Generated Magnetic Field",
@@ -530,7 +528,8 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
         # Plot main heatmap
         img = ax.imshow(
             B_field, cmap='viridis', origin='lower',
-            extent=[x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max()],
+            #extent=[x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max()],
+            extent=[y_vals.min(), y_vals.max(), x_vals.min(), x_vals.max()],
             vmin=lower_bound_1,  # 🔹 Fixed min color scale
             vmax=upper_bound_1   # 🔹 Fixed max color scale
         )
@@ -538,14 +537,14 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
         # Highlight the tolerance region using `contourf()`
         if reference_value != 0:
             ax.contourf(
-                X, Y, B_field,
+                Y, X, B_field,
                 levels=[range_values[0], range_values[1]],  # Only fill between tolerance limits
                 colors=['red'], alpha=0.4  # Semi-transparent red highlight
             )
 
             # Overlay standard contour lines
             contours = ax.contour(
-                X, Y, B_field, levels=range_values, colors='white', linewidths=1.5
+                Y, X, B_field, levels=range_values, colors='white', linewidths=1.5
             )
 
             # Label contour lines
