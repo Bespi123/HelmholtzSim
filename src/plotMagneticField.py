@@ -463,7 +463,7 @@ def plot_magField_time(df, select):
     for ax in axs:
         ax.set_xticks(ax.get_xticks()[::10]) 
 
-def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fixed_zaxis=True):
+def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis=True):
     """
     Generates 2D heatmaps with contour lines for magnetic field visualization
     in the XY, YZ, and XZ planes using Matplotlib.
@@ -519,17 +519,17 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
 
     for ax, (plane_name, x_label, y_label, df) in zip(axes, planes):
         # Create a 2D matrix (pivot table) for the heatmap
-        heatmap_data = df.pivot_table(index=y_label, columns=x_label, values=index, aggfunc='mean')
+        heatmap_data = df.pivot_table(index=x_label, columns=y_label, values=index, aggfunc='mean')
 
         # Generate coordinate arrays
         x_vals = np.array(heatmap_data.columns, dtype=float)
         y_vals = np.array(heatmap_data.index, dtype=float)
         X, Y = np.meshgrid(x_vals, y_vals, indexing='ij')
-        B_field = heatmap_data.values
+        B_field = heatmap_data.values.T
 
         # Plot main heatmap
         img = ax.imshow(
-            heatmap_data, cmap='viridis', origin='lower',
+            B_field, cmap='viridis', origin='lower',
             extent=[x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max()],
             vmin=lower_bound_1,  # 🔹 Fixed min color scale
             vmax=upper_bound_1   # 🔹 Fixed max color scale
@@ -538,14 +538,14 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
         # Highlight the tolerance region using `contourf()`
         if reference_value != 0:
             ax.contourf(
-                Y, X, B_field,
+                X, Y, B_field,
                 levels=[range_values[0], range_values[1]],  # Only fill between tolerance limits
                 colors=['red'], alpha=0.4  # Semi-transparent red highlight
             )
 
             # Overlay standard contour lines
             contours = ax.contour(
-                Y, X, B_field, levels=range_values, colors='white', linewidths=1.5
+                X, Y, B_field, levels=range_values, colors='white', linewidths=1.5
             )
 
             # Label contour lines
@@ -554,21 +554,17 @@ def plot_2d_magnetic_field(x_coil_results_s, spire1, spire2, index='Bx', use_fix
                 fmt=lambda x: f"{x:.2e} T"
             )
 
+        spire_list = spires.T
         # Transform spires for the current plane
         if plane_name == 'XY':
-            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 1, :]
-            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 1, :]
+            spire_x, spire_y = spire_list[:, 0, :], spire_list[:, 1, :]
         elif plane_name == 'YZ':
-            spire1_x, spire1_y = spire1[:, 1, :], spire1[:, 2, :]
-            spire2_x, spire2_y = spire2[:, 1, :], spire2[:, 2, :]
+            spire_x, spire_y = spire_list[:, 1, :], spire_list[:, 2, :]
         elif plane_name == 'XZ':
-            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 2, :]
-            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 2, :]
+            spire_x, spire_y = spire_list[:, 0, :], spire_list[:, 2, :]
 
         # Plot the spires
-        for i in range(spire1.shape[0]):
-            ax.plot(spire1_x[i, :], spire1_y[i, :], color='black', linestyle='-', linewidth=4, label='Spire 1' if i == 0 else "")
-            ax.plot(spire2_x[i, :], spire2_y[i, :], color='black', linestyle='-', linewidth=4, label='Spire 2' if i == 0 else "")
+        ax.plot(spire_x, spire_y, color='black', linestyle='-', linewidth=4, label='spires')
 
         # Set axis labels and title
         ax.set_xlabel(f"{x_label} (m)")
@@ -649,7 +645,7 @@ def plot_mainAxis_field(x_coil_results_s, index='Bx'):
     plt.show()
 
 
-def plot_magnetic_field_directions(x_coil_results_s, spire1, spire2):
+def plot_magnetic_field_directions(x_coil_results_s, spires):
     """
     Generates quiver plots to visualize the magnetic field directions
     using unitary vectors in the XY and XZ planes, with spires plotted.
@@ -696,18 +692,15 @@ def plot_magnetic_field_directions(x_coil_results_s, spire1, spire2):
             scale=10, color='red', width=0.005, headwidth=5
         )
 
+        spire_list = spires.T
         # Plot spires for the current plane
         if plane_name == 'XY':
-            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 1, :]
-            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 1, :]
+            spire1_x, spire1_y = spire_list[:, 0, :], spire_list[:, 1, :]
         elif plane_name == 'XZ':
-            spire1_x, spire1_y = spire1[:, 0, :], spire1[:, 2, :]
-            spire2_x, spire2_y = spire2[:, 0, :], spire2[:, 2, :]
+            spire1_x, spire1_y = spire_list[:, 0, :], spire_list[:, 2, :]
 
-        # Plot the spires
-        for i in range(spire1.shape[0]):
-            ax.plot(spire1_x[i, :], spire1_y[i, :], color='black', linestyle='-', linewidth=10, label='Spire 1' if i == 0 else "")
-            ax.plot(spire2_x[i, :], spire2_y[i, :], color='black', linestyle='-', linewidth=10, label='Spire 2' if i == 0 else "")
+        # Plot the spires    
+        ax.plot(spire1_x[:, :], spire1_y[:, :], color='black', linestyle='-', linewidth=10, label='Spires')
 
         # Set axis labels and title
         ax.set_xlabel(f"{x_label} (m)")
