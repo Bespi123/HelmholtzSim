@@ -1,0 +1,31 @@
+# Ignorar los notebooks de Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Ignorar archivos de base de datos locales (si usas SQLite, por ejemplo)
+*.db
+*.sqlite
+
+# Ignorar los archivos de configuración de Jupyter
+jupyter_notebook_config.py
+
+# Ignorar archivos temporales creados por Jupyter
+*.log
+*.tmp
+
+# Ignorar directorios de entorno virtual (si usas uno)
+venv/
+env/
+.venv/
+
+# Ignorar directorios de paquetes de Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Ignorar archivos de salida de Jupyter Notebook (exportados a otros formatos como HTML, PDF, etc.)
+*.html
+*.pdf
+
+# Ignorar entornos de Conda
+.conda/
+*.conda
