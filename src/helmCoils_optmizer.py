@@ -2,7 +2,7 @@ import numpy as np
 import random
 from deap import base, creator, tools, algorithms
 import src.helmCoils_simulator as sim
-
+import src.plotMagneticField as hplot
 # AWG data (remains global if it is constant)
 # Constants
 awg_data = {
@@ -46,7 +46,7 @@ def resistance_coil(awg_size, N, L):
 
 # Define the optimizer as a class:
 class HelmholtzOptimizer:
-    def __init__(self, desired_size, spires_function, Ax, X, Y, Z, N=30, I=1, fix_L=False, fixed_L_value=None,
+    def __init__(self, desired_size, coil, fun, fix_L=False, fixed_L_value=None,
                  grid_length_size=0.01, population = 20, generations = 50, mutation = 0.2):
         """
         Parameters:
@@ -59,13 +59,8 @@ class HelmholtzOptimizer:
           grid_length_size: Parameter used in fitness evaluation.
         """
         self.desired_size = desired_size
-        self.spires_function = spires_function
-        self.Ax = Ax
-        self.X = X
-        self.Y = Y 
-        self.Z = Z
-        self.N = N
-        self.I = I
+        self.coil = coil
+        self.fun = fun
         self.fix_L = fix_L
         self.fixed_L_value = fixed_L_value
         self.grid_length_size = grid_length_size
@@ -106,8 +101,9 @@ class HelmholtzOptimizer:
         self.toolbox.register("mutate", self.mutate_individual, mu=0, sigma=0.1, indpb=0.4)
         self.toolbox.register("mate", self.mate_individual)
         self.toolbox.register("select", tools.selTournament, tournsize=3)
-        # Evaluation function: pass self.spires_function and other parameters
-        self.toolbox.register("evaluate", lambda ind: self.fitness_function(ind, self.N, self.I, self.spires_function))
+        # Evaluation function: pass self.spires function and other parameters
+
+        self.toolbox.register("evaluate", lambda ind: self.fitness_function(ind,batch_Size = 120, num_seg=100))
 
     def apply_constraints(self, individual):
         # If fix_L is True, force L to the fixed value.
@@ -122,30 +118,25 @@ class HelmholtzOptimizer:
         ind = creator.Individual([self.toolbox.attr_L(), self.toolbox.attr_d()])
         return self.apply_constraints(ind)
 
-    def fitness_function(self, individual, N, I, coil_geometry, num_seg=100):
+    def fitness_function(self, individual, grid_length_size = 0.01, batch_Size = 120, *args, **kwargs):
         L, d = individual
         key = (L, d)
         if key in self.fitness_cache:
             return self.fitness_cache[key]
 
-        # Simulation using test_3 functions; Ax, X, Y, Z should be defined in your context.
+        coil = self.coil
+        # Update the coil parameters
+        coil.update_parameters(length=L, distance=d)
 
-        number_of_spires = 2
-        size_length = L
-        distance_among_spires = d
-        turns = N
-        current = I 
-        rotation_matrix = np.eye(3)
-        parallel_coils = 150
-        batch_Size = 120
+        spires = self.fun(*args, **kwargs)
 
-        coil = sim.CoilParameters(number_of_spires, size_length, distance_among_spires, turns, current, rotation_matrix)
-        
-        spire_x_s = coil_geometry(num_seg)
+        X, Y, Z = sim.generate_range([-(np.sum(coil.h)/2), 0], step_size_x = grid_length_size)
 
         coil_Results = sim.coil_simulation_parallel(
-            self.X, self.Y, self.Z, coil, current, spire_x_s, parallel_coils, batch_Size, enable_progress_bar=False
+            X, Y, Z, coil, spires, batch_Size, enable_progress_bar=False
         )
+
+        #hplot.plot_mainAxis_field(coil_Results, index='Bx')
 
         target = coil_Results[(coil_Results['X'] == 0) & (coil_Results['Y'] == 0) & (coil_Results['Z'] == 0)]
         if target.empty:
