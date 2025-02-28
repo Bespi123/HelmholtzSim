@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from deap import base, creator, tools, algorithms
-import src.helmCoils_simulator as test_3
+import src.helmCoils_simulator as sim
 
 # AWG data (remains global if it is constant)
 # Constants
@@ -122,18 +122,31 @@ class HelmholtzOptimizer:
         ind = creator.Individual([self.toolbox.attr_L(), self.toolbox.attr_d()])
         return self.apply_constraints(ind)
 
-    def fitness_function(self, individual, N, I, square_geometry, num_seg=100):
+    def fitness_function(self, individual, N, I, coil_geometry, num_seg=100):
         L, d = individual
         key = (L, d)
         if key in self.fitness_cache:
             return self.fitness_cache[key]
 
         # Simulation using test_3 functions; Ax, X, Y, Z should be defined in your context.
-        coil = test_3.CoilParameters(L, d, N)
-        spire1, spire2 = square_geometry(self.Ax, coil.h, coil.a, num_seg)
-        coil_Results = test_3.coil_simulation_1d_sequential(
-            self.X, self.Y, self.Z, coil, I, spire1, spire2, 1, 20, False
+
+        number_of_spires = 2
+        size_length = L
+        distance_among_spires = d
+        turns = N
+        current = I 
+        rotation_matrix = np.eye(3)
+        parallel_coils = 150
+        batch_Size = 120
+
+        coil = sim.CoilParameters(number_of_spires, size_length, distance_among_spires, turns, current, rotation_matrix)
+        
+        spire_x_s = coil_geometry(num_seg)
+
+        coil_Results = sim.coil_simulation_parallel(
+            self.X, self.Y, self.Z, coil, current, spire_x_s, parallel_coils, batch_Size, enable_progress_bar=False
         )
+
         target = coil_Results[(coil_Results['X'] == 0) & (coil_Results['Y'] == 0) & (coil_Results['Z'] == 0)]
         if target.empty:
             target_point = coil_Results['Bx'].mean()
