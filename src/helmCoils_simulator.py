@@ -15,7 +15,7 @@ rotz_180 = np.array([
 
 class CoilParameters:
     def __init__(self, coils_number: int, length: Union[float, list, np.ndarray], 
-                 height: Union[float, list, np.ndarray], turns: Union[int, list, np.ndarray], 
+                 distance: Union[float, list, np.ndarray], turns: Union[int, list, np.ndarray], 
                  current: float, rot_matrix: np.ndarray):
         """
         Initialize Helmholtz coil parameters.
@@ -23,14 +23,14 @@ class CoilParameters:
         Args:
             coils_number (int): Number of Helmholtz coils.
             length (float | list | np.ndarray): Length(s) of the Helmholtz testbed side.
-            height (float | list | np.ndarray): Distance(s) between Helmholtz coils.
+            distance (float | list | np.ndarray): Distance(s) between Helmholtz coils.
             turns (int | list | np.ndarray): Number of turns in each coil.
             current (float): Electric current applied to the coils.
             rot_matrix (np.ndarray): Rotation matrix for coordinate transformation.
         """
         # Convert inputs to NumPy arrays
         self.L = np.atleast_1d(length)  
-        self.h = np.atleast_1d(height)   
+        self.h = np.atleast_1d(distance)   
         #self.N = np.atleast_1d(turns) if isinstance(turns, (list, np.ndarray)) else np.array([turns])  
         self.N = turns
         self.I = current
@@ -57,6 +57,52 @@ class CoilParameters:
         
         self.a = self.L / 2  # Half Helmholtz testbed length side
         self.pos =  self.get_spires_position()
+
+    def update_parameters(self, coils_number: int = None, 
+                        length: Union[float, list, np.ndarray] = None,
+                        distance: Union[float, list, np.ndarray] = None,
+                        turns: Union[int, list, np.ndarray] = None,
+                        current: float = None,
+                        rot_matrix: np.ndarray = None):
+        """
+        Update the coil parameters during optimization or any time.
+
+        Args:
+            coils_number (int, optional): New number of Helmholtz coils.
+            length (float | list | np.ndarray, optional): New length(s) for the coils.
+            distance (float | list | np.ndarray, optional): New distance(s) for the coils.
+            turns (int | list | np.ndarray, optional): New number of turns for the coils.
+            current (float, optional): New electric current applied to the coils.
+            rot_matrix (np.ndarray, optional): New rotation matrix for coordinate transformation.
+        """
+        if coils_number is not None:
+            self.coils_number = coils_number
+
+        if length is not None:
+            self.L = np.atleast_1d(length)
+            if self.L.shape[0] not in {1, self.coils_number}: 
+                raise ValueError(f"Invalid length size. Expected 1 or {self.coils_number}, got {self.L.shape[0]}")
+            elif self.L.shape[0] == 1:
+                self.L = self.L[0] * np.ones((self.coils_number,))
+
+        if distance is not None:
+            self.h = np.atleast_1d(distance)
+            if self.h.shape[0] not in {1, self.coils_number - 1}:
+                raise ValueError(f"Invalid height size. Expected 1 or {self.coils_number - 1}, got {self.h.shape[0]}")
+            elif self.h.shape[0] == 1:
+                self.h = self.h[0] * np.ones((self.coils_number - 1,))
+
+        if turns is not None:
+            self.N = turns
+
+        if current is not None:
+            self.I = current
+
+        if rot_matrix is not None:
+            self.A = rot_matrix
+
+        # Recalculate the coil positions after parameter update
+        self.pos = self.get_spires_position()
 
 
     def get_spires_position(self):
