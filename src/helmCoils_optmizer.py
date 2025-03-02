@@ -75,13 +75,12 @@ class HelmholtzOptimizer:
             self.min_d, self.max_d = self.fixed_L_value / 2, self.fixed_L_value
         else:
             self.min_L, self.max_L = self.desired_size, self.desired_size * 4
-            self.min_d, self.max_d = self.desired_size, self.desired_size * 2
+            self.min_d, self.max_d = self.desired_size, self.desired_size * coil.coils_number
 
         # A local cache for fitness evaluations
         self.fitness_cache = {}
 
         # Set up DEAP toolbox.
-        self.toolbox = base.Toolbox()
         self._setup_deap()
 
     def _setup_deap(self):
@@ -91,19 +90,22 @@ class HelmholtzOptimizer:
         if not hasattr(creator, "Individual"):
             creator.create("Individual", list, fitness=creator.FitnessMin)
 
+        self.toolbox = base.Toolbox()
+
+        # Register genetic operators
+        self.toolbox.register("individual", tools.initIterate, creator.Individual, self.init_individual)
+        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
+        self.toolbox.register("evaluate", lambda ind: self.fitness_function(ind,batch_Size = 120, num_seg=100)) #lambda used to add new parameters
+        #self.toolbox.register("mate", self.mate_individual)  #Combine genes of two generations
+        self.toolbox.register("mate", self.long_jump_crossover)
+        self.toolbox.register("mutate", self.mutate_individual, mu=0, sigma=0.1, indpb=0.4)
+        #self.toolbox.register("mutate", self.adaptive_mutate, mu=0, sigma=0.1, indpb=0.4)
+        self.toolbox.register("select", tools.selTournament, tournsize=3)
+
+
         # Register attribute generators
         self.toolbox.register("attr_L", random.uniform, self.min_L, self.max_L)
         self.toolbox.register("attr_d", random.uniform, self.min_d, self.max_d)
-        self.toolbox.register("individual", self.init_individual)
-        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
-
-        # Register genetic operators
-        self.toolbox.register("mutate", self.mutate_individual, mu=0, sigma=0.1, indpb=0.4)
-        self.toolbox.register("mate", self.mate_individual)
-        self.toolbox.register("select", tools.selTournament, tournsize=3)
-        # Evaluation function: pass self.spires function and other parameters
-
-        self.toolbox.register("evaluate", lambda ind: self.fitness_function(ind,batch_Size = 120, num_seg=100))
 
     def apply_constraints(self, individual):
         # If fix_L is True, force L to the fixed value.
@@ -115,8 +117,14 @@ class HelmholtzOptimizer:
         return individual
 
     def init_individual(self):
-        ind = creator.Individual([self.toolbox.attr_L(), self.toolbox.attr_d()])
+        # Wider range for initialization
+        initial_L = random.uniform(self.min_L * 0.5, self.max_L * 1.5)  # Extends beyond normal range
+        initial_d = random.uniform(self.min_d * 0.5, self.max_d * 1.5)  # Allows more extreme values
+
+        # Ensure the values stay within constraints
+        ind = creator.Individual([initial_L, initial_d])
         return self.apply_constraints(ind)
+
 
     def fitness_function(self, individual, grid_length_size = 0.01, batch_Size = 120, *args, **kwargs):
         L, d = individual
@@ -130,7 +138,7 @@ class HelmholtzOptimizer:
 
         spires = self.fun(*args, **kwargs)
 
-        X, Y, Z = sim.generate_range([-(np.sum(coil.h)/2), 0], step_size_x = grid_length_size)
+        X, Y, Z = sim.generate_range([-1*(np.sum(coil.h)/2), 0], step_size_x = grid_length_size)
 
         coil_Results = sim.coil_simulation_parallel(
             X, Y, Z, coil, spires, batch_Size, enable_progress_bar=False
@@ -175,7 +183,22 @@ class HelmholtzOptimizer:
             individual[1] += random.gauss(mu, sigma)
         return self.apply_constraints(individual),
 
-    def mate_individual(self, ind1, ind2):
+    def adaptive_mutate(self, individual, gen, mu):
+        """Mutación adaptativa con mayor exploración al inicio."""
+        mutation_rate = 0.5 * (1 - gen / self.gen)
+        sigma = 0.2 * (1 - gen / self.gen)
+        
+        if not self.fix_L:
+            if random.random() < mutation_rate:
+                individual[0] += random.gauss(mu, sigma)
+
+        if random.random() < mutation_rate:
+            individual[1] += random.gauss(mu, sigma)
+
+        return self.apply_constraints(individual),
+
+    def mate_individual(self, ind1, ind2): 
+        'With 50% of probability generates individuals'
         if not self.fix_L:
             if random.random() < 0.5:
                 ind1[0], ind2[0] = ind2[0], ind1[0]
@@ -185,7 +208,19 @@ class HelmholtzOptimizer:
         self.apply_constraints(ind2)
         return ind1, ind2
 
-    def run_ga(self, pop_size = None, cxpb=0.5, mutpb=None, ngen=None):
+    def long_jump_crossover(self, ind1, ind2):
+        """Cruce con exploración agresiva."""
+        alpha = random.uniform(-0.5, 1.5)
+
+        if not self.fix_L:
+            ind1[0], ind2[0] = ind2[0], ind1[0]
+        
+        ind1[1] = alpha * ind1[1] + (1 - alpha) * ind2[1]
+        self.apply_constraints(ind1)
+        self.apply_constraints(ind2)
+        return ind1, ind2
+    
+    def run_ga(self, pop_size=None, cxpb=0.5, mutpb=None, ngen=None, initial_individual=None):
         if pop_size is None:
             pop_size = self.pop
         if ngen is None:
@@ -193,17 +228,27 @@ class HelmholtzOptimizer:
         if mutpb is None:
             mutpb = self.mut
 
-        pop = self.toolbox.population(n=pop_size)
+        # Generate initial population (reserve space for one extra individual)
+        pop = self.toolbox.population(n=pop_size - 1)
+
+        # Add the initial individual if provided
+        if initial_individual:
+            ind = creator.Individual(initial_individual)
+            ind.fitness.values = self.toolbox.evaluate(ind)  # Evaluate fitness
+            pop.append(ind)  # Insert into population
+
         hof = tools.HallOfFame(1)
         stats = tools.Statistics(lambda ind: ind.fitness.values)
         stats.register("min", np.min)
         stats.register("avg", np.mean)
+
         pop, logbook = algorithms.eaSimple(pop, self.toolbox, cxpb=cxpb, mutpb=mutpb,
-                                           ngen=ngen, stats=stats, halloffame=hof, verbose=True)
+                                        ngen=ngen, stats=stats, halloffame=hof, verbose=True)
         return hof[0], logbook
 
+
     def optimize(self):
-        best_solution, logbook = self.run_ga()
+        best_solution, logbook = self.run_ga(initial_individual=[1.05, 0.59])
         L_opt, d_opt = best_solution
         print("\nOptimal Parameters Found:")
         print(f"L (length): {L_opt:.4f} m")
