@@ -102,6 +102,7 @@ class CoilParameters:
             self.A = rot_matrix
 
         # Recalculate the coil positions after parameter update
+        self.a = self.L / 2  # Half Helmholtz testbed length side
         self.pos = self.get_spires_position()
 
 
