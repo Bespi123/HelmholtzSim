@@ -49,7 +49,10 @@ class CoilParameters:
         if self.h.shape[0] not in {1, coils_number - 1}:
             raise ValueError(f"Invalid height size. Expected 1 or {coils_number - 1}, got {self.h.shape[0]}")
         elif self.h.shape[0] == 1:
-            self.h = self.h[0] * np.ones((coils_number - 1,))
+            if self.coils_number == 1:
+                self.h = [0]
+            else:
+                self.h = self.h[0] * np.ones((coils_number - 1,))
 
         # Validate `rot_matrix`
         if self.A.shape != (3, 3):
@@ -123,26 +126,29 @@ class CoilParameters:
         o = coils_number // 2  # Compute middle index (integer division)
 
         # Compute displacement values for each coil except the last one
-        for j in range(coils_number - 1):
-            if j < o - (coils_number % 2 == 0):  
-                # For coils before the middle point
-                d[j] = -h[j]  
-            elif j == o - (coils_number % 2 == 0):  
-                # Middle coil case: If even, split height; if odd, set zero
-                d[j] = -h[j] / 2 if coils_number % 2 == 0 else 0
-                d[j + 1] = h[j] / 2 if coils_number % 2 == 0 else h[j]
-            else:
-                # For coils after the middle point
-                d[j + 1] = h[j]              
+        if self.coils_number == 1:
+            d1 = [0]
+        else:
+            for j in range(coils_number - 1):
+                if j < o - (coils_number % 2 == 0):  
+                    # For coils before the middle point
+                    d[j] = -h[j]  
+                elif j == o - (coils_number % 2 == 0):  
+                    # Middle coil case: If even, split height; if odd, set zero
+                    d[j] = -h[j] / 2 if coils_number % 2 == 0 else 0
+                    d[j + 1] = h[j] / 2 if coils_number % 2 == 0 else h[j]
+                else:
+                    # For coils after the middle point
+                    d[j + 1] = h[j]              
 
-        # Compute cumulative positions
-        for j in range(coils_number):
-            if j <= o - (coils_number % 2 == 0):  
-                # Sum displacements from current position to the middle point
-                d1[j] = np.sum(d[j:o - (coils_number % 2 == 0) + 1]) 
-            else:
-                # Sum displacements from the middle point onward
-                d1[j] = np.sum(d[o - (coils_number % 2 == 0) + 1:j + 1]) 
+            # Compute cumulative positions
+            for j in range(coils_number):
+                if j <= o - (coils_number % 2 == 0):  
+                    # Sum displacements from current position to the middle point
+                    d1[j] = np.sum(d[j:o - (coils_number % 2 == 0) + 1]) 
+                else:
+                    # Sum displacements from the middle point onward
+                    d1[j] = np.sum(d[o - (coils_number % 2 == 0) + 1:j + 1]) 
 
         return d1  # Return computed coil positions
 
