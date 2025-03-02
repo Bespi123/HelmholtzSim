@@ -554,10 +554,6 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
     # Convert the results to a DataFrame for easier data manipulation and visualization
     return pd.DataFrame(result, columns=['X', 'Y', 'Z', 'Bx', 'By', 'Bz'])
 
-
-import numpy as np
-import pandas as pd
-
 def coil_symetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
     """
     Simulates a coil field while assuming symmetry in the XY, YZ, and XZ planes.
