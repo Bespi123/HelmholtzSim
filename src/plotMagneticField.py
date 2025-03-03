@@ -290,58 +290,61 @@ def plot_spires(fig, spires, color='black', label='X-spires (m)', row=None, col=
 
 
 def plot_grid(X, Y, Z, fig):
-  
-  points = np.stack((X, Y, Z), axis=-1)  # concatenate coordinates
+    # If fig is None, create a new figure
+    if fig is None:
+        fig = go.Figure()
 
-  # 1) Definir las máscaras
-  mask_xy = (points[..., 2] == 0)  # plano XY: Z=0 
-  mask_yz = (points[..., 0] == 0)  # plano YZ: X=0
-  mask_xz = (points[..., 1] == 0)  # plano XZ: Y=0
+    points = np.stack((X, Y, Z), axis=-1)  # concatenate coordinates
 
-  # 2) Filtrar
-  P1_points = points[mask_xy]  # array con shape (N1, 3)
-  P2_points = points[mask_yz]  # array con shape (N2, 3)
-  P3_points = points[mask_xz]  # array con shape (N3, 3)
+    # 1) Definir las máscaras
+    mask_xy = (points[..., 2] == 0)  # plano XY: Z=0 
+    mask_yz = (points[..., 0] == 0)  # plano YZ: X=0
+    mask_xz = (points[..., 1] == 0)  # plano XZ: Y=0
 
-  # Add points for each plane
-  fig.add_trace(go.Scatter3d(
-      x=P1_points[..., 0].flatten(),
-      y=P1_points[..., 1].flatten(),
-      z=P1_points[..., 2].flatten(),
-      mode='markers',
-      marker=dict(size=3, color='red'),
-      name='P1 (X-Y Plane)'
-  ))
+    # 2) Filtrar
+    P1_points = points[mask_xy]  # array con shape (N1, 3)
+    P2_points = points[mask_yz]  # array con shape (N2, 3)
+    P3_points = points[mask_xz]  # array con shape (N3, 3)
 
-  fig.add_trace(go.Scatter3d(
-      x=P2_points[..., 0].flatten(),
-      y=P2_points[..., 1].flatten(),
-      z=P2_points[..., 2].flatten(),
-      mode='markers',
-      marker=dict(size=3, color='green'),
-      name='P2 (Y-Z Plane)'
-  ))
+    # Add points for each plane
+    fig.add_trace(go.Scatter3d(
+        x=P1_points[..., 0].flatten(),
+        y=P1_points[..., 1].flatten(),
+        z=P1_points[..., 2].flatten(),
+        mode='markers',
+        marker=dict(size=3, color='red'),
+        name='P1 (X-Y Plane)'
+    ))
 
-  fig.add_trace(go.Scatter3d(
-      x=P3_points[..., 0].flatten(),
-      y=P3_points[..., 1].flatten(),
-      z=P3_points[..., 2].flatten(),
-      mode='markers',
-      marker=dict(size=3, color='blue'),
-      name='P3 (X-Z Plane)'
-  ))
+    fig.add_trace(go.Scatter3d(
+        x=P2_points[..., 0].flatten(),
+        y=P2_points[..., 1].flatten(),
+        z=P2_points[..., 2].flatten(),
+        mode='markers',
+        marker=dict(size=3, color='green'),
+        name='P2 (Y-Z Plane)'
+    ))
 
-  # Update layout for better visualization
-  fig.update_layout(
-      scene=dict(
-          xaxis_title='X-axis',
-          yaxis_title='Y-axis',
-          zaxis_title='Z-axis'
-      ),
-      #title="Interactive 3D Plot with Plotly"
-  )
+    fig.add_trace(go.Scatter3d(
+        x=P3_points[..., 0].flatten(),
+        y=P3_points[..., 1].flatten(),
+        z=P3_points[..., 2].flatten(),
+        mode='markers',
+        marker=dict(size=3, color='blue'),
+        name='P3 (X-Z Plane)'
+    ))
 
-  fig.show()
+    # Update layout for better visualization
+    fig.update_layout(
+        scene=dict(
+            xaxis_title='X-axis',
+            yaxis_title='Y-axis',
+            zaxis_title='Z-axis'
+        ),
+        #title="Interactive 3D Plot with Plotly"
+    )
+
+    fig.show()
 
 # Function to create a sphere representing the Earth
 def create_earth(radius=6371.0, resolution=50):
@@ -465,11 +468,11 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
     """
     Generates 2D heatmaps with contour lines for magnetic field visualization
     in the XY, YZ, and XZ planes using Matplotlib.
-    Also plots the coil spires (spire1, spire2) in each plane.
+    Also plots the coil spires in each plane.
 
     Parameters:
     - x_coil_results_s (DataFrame): Magnetic field data (Bx, By, Bz).
-    - spire1, spire2 (numpy.ndarray): Arrays representing the spires (shape: (4, 3, N)).
+    - spires (numpy.ndarray): Array representing the spires (shape: (4, 3, N)).
     - index (str): The magnetic field component to visualize ('Bx', 'By', or 'Bz').
     - use_fixed_zaxis (bool): If True, uses a fixed z-axis range; otherwise, it scales automatically.
 
@@ -490,10 +493,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
         reference_value = reference_point[index].values[0]
 
     # Calculate the 0.5% tolerance range
-    if reference_value == 0:
-        tolerance = 0.005
-    else:
-        tolerance = 0.005 * reference_value
+    tolerance = 0.005 * reference_value if reference_value != 0 else 0.005
     lower_bound_tol = reference_value - tolerance
     upper_bound_tol = reference_value + tolerance
 
@@ -503,7 +503,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
 
     # Generate multiple contour levels for field variations
     range_values = np.sort(np.array([lower_bound_tol, upper_bound_tol]))
-    print('reference_value: ',reference_value)
+    print('reference_value: ', reference_value)
 
     # Define the three planes
     planes = [
@@ -519,19 +519,28 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
         # Create a 2D matrix (pivot table) for the heatmap
         heatmap_data = df.pivot_table(index=x_label, columns=y_label, values=index, aggfunc='mean')
 
-        # Generate coordinate arrays
-        x_vals = np.array(heatmap_data.columns, dtype=float)
-        y_vals = np.array(heatmap_data.index, dtype=float)
-        X, Y = np.meshgrid(x_vals, y_vals, indexing='ij')
-        B_field = heatmap_data.values.T
+        # Fill NaN values in the grid
+        heatmap_data = heatmap_data.fillna(method='ffill').fillna(method='bfill')
+
+        # If there are not enough data points, create a NaN matrix
+        if heatmap_data.shape[0] < 2 or heatmap_data.shape[1] < 2:
+            print(f"Warning: Not enough data for {plane_name} plane, generating NaN matrix.")
+            x_vals = np.linspace(-1, 1, 10)  # Arbitrary range for visualization
+            y_vals = np.linspace(-1, 1, 10)
+            X, Y = np.meshgrid(x_vals, y_vals)
+            B_field = np.full_like(X, np.nan)
+        else:
+            x_vals = np.array(heatmap_data.columns, dtype=float)
+            y_vals = np.array(heatmap_data.index, dtype=float)
+            X, Y = np.meshgrid(x_vals, y_vals, indexing='ij')
+            B_field = heatmap_data.values.T
 
         # Plot main heatmap
         img = ax.imshow(
             B_field, cmap='viridis', origin='lower',
-            #extent=[x_vals.min(), x_vals.max(), y_vals.min(), y_vals.max()],
             extent=[y_vals.min(), y_vals.max(), x_vals.min(), x_vals.max()],
-            vmin=lower_bound_1,  # 🔹 Fixed min color scale
-            vmax=upper_bound_1   # 🔹 Fixed max color scale
+            vmin=lower_bound_1,  # Fixed min color scale
+            vmax=upper_bound_1   # Fixed max color scale
         )
 
         # Highlight the tolerance region using `contourf()`
