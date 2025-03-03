@@ -553,3 +553,76 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
 
     # Convert the results to a DataFrame for easier data manipulation and visualization
     return pd.DataFrame(result, columns=['X', 'Y', 'Z', 'Bx', 'By', 'Bz'])
+
+def coil_symetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
+    """
+    Simulates a coil field while assuming symmetry in the XY, YZ, and XZ planes.
+    
+    Parameters:
+    - X, Y, Z: Arrays representing the spatial coordinates.
+    - coil_params: Parameters of the coil.
+    - spires_np: Number of spires.
+    - batch_size: Number of elements processed in parallel.
+    - enable_progress_bar: Boolean to show progress.
+    - n: Number of iterations.
+    
+    Returns:
+    - A DataFrame with the original and symmetrically extended data.
+    """
+    
+    # Find all indices where X is zero
+    idx_zeros = np.where(X == 0)[0]
+
+    # Ensure there are zeros to maintain symmetry
+    if idx_zeros.size == 0:
+        raise ValueError("No zeros found in X. Symmetry cannot be applied.")
+
+    # Last zero index to include all relevant values
+    idx_fin = idx_zeros[-1]
+
+    # Cut X, Y, Z up to include all zeros
+    X_cropped = X[:idx_fin+1]
+    Y_cropped = Y[:idx_fin+1]
+    Z_cropped = Z[:idx_fin+1]
+
+    # Run the simulation with the reduced dataset
+    result = coil_simulation_parallel(X_cropped, Y_cropped, Z_cropped, coil_params, spires_np, batch_size, enable_progress_bar, n)
+
+    # Create reflections for the three symmetry planes
+    reflections = []
+
+    # Reflection in the XZ plane (invert Y)
+    result_yz = result.copy()
+    result_yz["Y"] = -result_yz["Y"]
+    result_yz["By"] = result_yz["By"]  # Invert Y-component of the field
+
+    # Reflection in the XY plane (invert Z)
+    result_xz = result.copy()
+    result_xz["Z"] = -result_xz["Z"]
+    result_xz["Bz"] = result_xz["Bz"]  # Invert Z-component of the field
+
+    # Reflection in the YZ plane (invert X)
+    result_xy = result.copy()
+    result_xy["X"] = -result_xy["X"]
+    result_xy["Bx"] = result_xy["Bx"]  # Invert X-component of the field
+
+    # Add the reflected datasets to the list
+    reflections.extend([result_yz, result_xz, result_xy])
+
+    # Full reflection across all three planes (-X, -Y, -Z)
+    result_xyz = result.copy()
+    result_xyz["X"] = -result_xyz["X"]
+    result_xyz["Y"] = -result_xyz["Y"]
+    result_xyz["Z"] = -result_xyz["Z"]
+    result_xyz["Bx"] = result_xyz["Bx"]
+    result_xyz["By"] = result_xyz["By"]
+    result_xyz["Bz"] = result_xyz["Bz"]
+
+    # Add the fully inverted dataset
+    reflections.append(result_xyz)
+
+    # Combine all results, remove duplicates, and sort by coordinates
+    result_final = pd.concat([result] + reflections).drop_duplicates().sort_values(by=["X", "Y", "Z"]).reset_index(drop=True)
+
+    return result_final
+
