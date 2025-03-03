@@ -32,8 +32,7 @@ class CoilParameters:
         # Convert inputs to NumPy arrays
         self.L = np.atleast_1d(length)  
         self.h = np.atleast_1d(distance)   
-        #self.N = np.atleast_1d(turns) if isinstance(turns, (list, np.ndarray)) else np.array([turns])  
-        self.N = turns
+        self.N = np.atleast_1d(turns) if isinstance(turns, (list, np.ndarray)) else np.array([turns])  
         self.I = current
         self.A = rot_matrix
 
@@ -45,6 +44,12 @@ class CoilParameters:
             raise ValueError(f"Invalid length size. Expected 1 or {coils_number}, got {self.L.shape[0]}")
         elif self.L.shape[0] == 1:
             self.L = self.L[0] * np.ones((coils_number,))
+
+        # Validate and expand `turns`
+        if self.N.shape[0] not in {1, coils_number}:
+            raise ValueError(f"Invalid turns size. Expected 1 or {coils_number}, got {self.N.shape[0]}")
+        elif self.N.shape[0] == 1:
+            self.N = self.N[0] * np.ones((coils_number,))
 
         # Validate and expand `height`
         if self.h.shape[0] not in {1, coils_number - 1}:
@@ -97,7 +102,11 @@ class CoilParameters:
                 self.h = self.h[0] * np.ones((self.coils_number - 1,))
 
         if turns is not None:
-            self.N = turns
+            self.N = np.atleast_1d(turns)
+            if self.N.shape[0] not in {1, self.coils_number}: 
+                raise ValueError(f"Invalid turns size. Expected 1 or {self.coils_number}, got {self.N.shape[0]}")
+            elif self.N.shape[0] == 1:
+                self.N = self.N[0] * np.ones((self.coils_number,))
 
         if current is not None:
             self.I = current
@@ -434,7 +443,6 @@ def calculate_field(args):
         numpy.ndarray: The magnetic field vector (shape: (3,)).
     """
     A1, P, side = args
-
     B = np.zeros(3)  # Initialize the magnetic field vector to zero
     dl = np.diff(side, axis=1)  # Differential length elements for each segment of the coil
     
@@ -446,7 +454,7 @@ def calculate_field(args):
             R = P - side[:, j]
             d1 = dl[:, j]
             # Calculate the contribution to the magnetic field (Biot-Savart Law)
-            dB = (A1) * np.cross(d1, R) / np.linalg.norm(R)**3
+            dB = (A1[j]) * np.cross(d1, R) / np.linalg.norm(R)**3
                 
             # Accumulate the contribution to the total magnetic field
             B += dB
@@ -456,7 +464,7 @@ def calculate_field(args):
     return B
 
 
-def magnetic_field_coil_parallel(P, N, I, coils, n):
+def magnetic_field_coil_parallel(P, N_arr, I, coils, n):
     """
     Calculates the magnetic field at observation points P due to two square coils
     using the Biot-Savart Law.
@@ -472,7 +480,7 @@ def magnetic_field_coil_parallel(P, N, I, coils, n):
         np.ndarray: Total magnetic field (B) calculated at each observation point P (matrix of size m x 3).
     """
     # Proportionality constant from the Biot-Savart Law
-    A1 = (N * MU_0 * I) / (4 * np.pi)
+    A1 = (N_arr * MU_0 * I) / (4 * np.pi)
 
     # Use multiprocessing to calculate in parallel
     with Pool(processes=cpu_count()) as pool:
@@ -481,7 +489,7 @@ def magnetic_field_coil_parallel(P, N, I, coils, n):
         # Iterate over each observation point in P
         for i in range(P.shape[0]):  # P has m rows, each representing a point in space
         
-            args = [(A1, P[i, :], coils[:, j:j+n]) for j in range(0, coils.shape[1], n)]
+            args = [(A1[j:j+n], P[i, :], coils[:, j:j+n]) for j in range(0, coils.shape[1], n)]
 
             # Compute the magnetic field in parallel for coil segments
             B_segments.append(pool.map(calculate_field, args))
@@ -508,6 +516,10 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
             pd.DataFrame: A DataFrame containing the grid coordinates and magnetic field components.
                         Columns: ['X', 'Y', 'Z', 'Bx', 'By', 'Bz'].
         """
+    
+    # map the spides differential with number of turns
+    N_arr = np.repeat(coil_params.N, np.repeat(spires_np.shape[2], spires_np.shape[0]))
+
     # Generate the X-Y grid based on the coil dimensions and grid step size    
     result = []  # List to store the simulation results
 
@@ -538,7 +550,7 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
         P_batch = np.stack([X_batch, Y_batch, Z_batch], axis=1)
 
         # Calculate the magnetic field at the batch points
-        B = magnetic_field_coil_parallel(P_batch, coil_params.N, coil_params.I, coils, n)
+        B = magnetic_field_coil_parallel(P_batch, N_arr, coil_params.I, coils, n)
 
         # Store the results in the format (X, Y, Z, Bx, By, Bz)
         result += list(zip(P_batch[:, 0], P_batch[:, 1], P_batch[:, 2], B[:, 0], B[:, 1], B[:, 2]))
