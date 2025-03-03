@@ -12,7 +12,18 @@ transformer = None
 
 def initialize_satellite(line1, line2):
     """
-    Initialize the satellite and transformer as global variables.
+    Initialize the satellite and coordinate transformer as global variables.
+
+    Parameters:
+    - line1 (str): First line of the Two-Line Element (TLE) set.
+    - line2 (str): Second line of the Two-Line Element (TLE) set.
+
+    This function initializes:
+    1. `satellite`: An SGP4 propagator object created using the TLE.
+    2. `transformer`: A coordinate transformation object to convert ECEF (Earth-Centered, Earth-Fixed)
+       coordinates to geodetic (latitude, longitude, altitude) using EPSG codes.
+
+    The initialized objects are stored as global variables for use in other functions.
     """
     global satellite, transformer
     satellite = Satrec.twoline2rv(line1, line2)
@@ -20,7 +31,13 @@ def initialize_satellite(line1, line2):
 
 def calculate_gmst(jd_full):
     """
-    Calculate GMST (Greenwich Mean Sidereal Time).
+    Calculate Greenwich Mean Sidereal Time (GMST) in radians.
+
+    Parameters:
+    - jd_full (float): The full Julian Date (JD) for which GMST is to be calculated.
+
+    Returns:
+    - float: GMST in radians.
     """
     T = (jd_full - 2451545.0) / 36525.0
     gmst_deg = 280.46061837 + 360.98564736629 * (jd_full - 2451545.0) + T**2 * (0.000387933 - T / 38710000.0)
@@ -28,7 +45,14 @@ def calculate_gmst(jd_full):
 
 def process_time(current_time):
     """
-    Process a single timestamp for satellite propagation and field calculations.
+    Process a single timestamp for satellite propagation and magnetic field calculations.
+
+    Parameters:
+    - current_time (datetime): The timestamp for which to compute satellite position and field values.
+
+    Returns:
+    - dict: A dictionary containing satellite position (ECI, ECEF, geodetic) and magnetic field components.
+    - None: If an error occurs during propagation.
     """
     jd, fr = jday(current_time.year, current_time.month, current_time.day,
                   current_time.hour, current_time.minute, current_time.second)
@@ -92,19 +116,38 @@ def process_time(current_time):
         "Bz ECI (nT)": bz_eci
     }
 
-def simulate_satellite(start_date, end_date, time_step):
+def simulate_satellite(start_date, end_date, time_step, batch_size=100):
     """
-    Simulate satellite propagation over a given time range with parallel processing.
-    """
-    # Generate a range of timestamps
-    time_range = [start_date + i * time_step for i in range(int((end_date - start_date) / time_step) + 1)]
+    Simulate satellite propagation over a given time range in batches with parallel processing.
 
-    # Parallel processing
+    Parameters:
+    - start_date: datetime, start of the simulation
+    - end_date: datetime, end of the simulation
+    - time_step: timedelta, time interval between steps
+    - batch_size: int, number of timestamps processed in each batch
+
+    Returns:
+    - DataFrame containing results
+    """
+    # Ensure time_step is in seconds
+    time_step_seconds = time_step.total_seconds()
+
+    # Generate a range of timestamps
+    num_steps = int((end_date - start_date).total_seconds() / time_step_seconds) + 1
+    time_range = [start_date + timedelta(seconds=i * time_step_seconds) for i in range(num_steps)]
+
+    # Split the time_range into batches
+    time_batches = np.array_split(time_range, max(1, len(time_range) // batch_size))
+
+    results = []
     with ProcessPoolExecutor() as executor:
-        results = list(filter(None, executor.map(process_time, time_range)))
+        for batch in time_batches:
+            batch_results = list(filter(None, executor.map(process_time, batch)))
+            results.extend(batch_results)  # Append batch results
 
     # Convert results to DataFrame
     return pd.DataFrame(results)
+
 
 def calculate_max_min_values(df, select):
     """

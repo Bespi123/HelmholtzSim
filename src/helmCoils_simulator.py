@@ -4,6 +4,7 @@ import pandas as pd
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 from typing import Union
+import src.plotMagneticField as hplot
 
 # Define global constants
 MU_0 = 4 * np.pi * 1e-7  # Permeability of free space
@@ -31,8 +32,7 @@ class CoilParameters:
         # Convert inputs to NumPy arrays
         self.L = np.atleast_1d(length)  
         self.h = np.atleast_1d(distance)   
-        #self.N = np.atleast_1d(turns) if isinstance(turns, (list, np.ndarray)) else np.array([turns])  
-        self.N = turns
+        self.N = np.atleast_1d(turns) if isinstance(turns, (list, np.ndarray)) else np.array([turns])  
         self.I = current
         self.A = rot_matrix
 
@@ -44,6 +44,12 @@ class CoilParameters:
             raise ValueError(f"Invalid length size. Expected 1 or {coils_number}, got {self.L.shape[0]}")
         elif self.L.shape[0] == 1:
             self.L = self.L[0] * np.ones((coils_number,))
+
+        # Validate and expand `turns`
+        if self.N.shape[0] not in {1, coils_number}:
+            raise ValueError(f"Invalid turns size. Expected 1 or {coils_number}, got {self.N.shape[0]}")
+        elif self.N.shape[0] == 1:
+            self.N = self.N[0] * np.ones((coils_number,))
 
         # Validate and expand `height`
         if self.h.shape[0] not in {1, coils_number - 1}:
@@ -96,7 +102,11 @@ class CoilParameters:
                 self.h = self.h[0] * np.ones((self.coils_number - 1,))
 
         if turns is not None:
-            self.N = turns
+            self.N = np.atleast_1d(turns)
+            if self.N.shape[0] not in {1, self.coils_number}: 
+                raise ValueError(f"Invalid turns size. Expected 1 or {self.coils_number}, got {self.N.shape[0]}")
+            elif self.N.shape[0] == 1:
+                self.N = self.N[0] * np.ones((self.coils_number,))
 
         if current is not None:
             self.I = current
@@ -433,7 +443,6 @@ def calculate_field(args):
         numpy.ndarray: The magnetic field vector (shape: (3,)).
     """
     A1, P, side = args
-
     B = np.zeros(3)  # Initialize the magnetic field vector to zero
     dl = np.diff(side, axis=1)  # Differential length elements for each segment of the coil
     
@@ -445,7 +454,7 @@ def calculate_field(args):
             R = P - side[:, j]
             d1 = dl[:, j]
             # Calculate the contribution to the magnetic field (Biot-Savart Law)
-            dB = (A1) * np.cross(d1, R) / np.linalg.norm(R)**3
+            dB = (A1[j]) * np.cross(d1, R) / np.linalg.norm(R)**3
                 
             # Accumulate the contribution to the total magnetic field
             B += dB
@@ -455,7 +464,7 @@ def calculate_field(args):
     return B
 
 
-def magnetic_field_coil_parallel(P, N, I, coils, n):
+def magnetic_field_coil_parallel(P, N_arr, I, coils, n):
     """
     Calculates the magnetic field at observation points P due to two square coils
     using the Biot-Savart Law.
@@ -471,7 +480,7 @@ def magnetic_field_coil_parallel(P, N, I, coils, n):
         np.ndarray: Total magnetic field (B) calculated at each observation point P (matrix of size m x 3).
     """
     # Proportionality constant from the Biot-Savart Law
-    A1 = (N * MU_0 * I) / (4 * np.pi)
+    A1 = (N_arr * MU_0 * I) / (4 * np.pi)
 
     # Use multiprocessing to calculate in parallel
     with Pool(processes=cpu_count()) as pool:
@@ -480,7 +489,7 @@ def magnetic_field_coil_parallel(P, N, I, coils, n):
         # Iterate over each observation point in P
         for i in range(P.shape[0]):  # P has m rows, each representing a point in space
         
-            args = [(A1, P[i, :], coils[:, j:j+n]) for j in range(0, coils.shape[1], n)]
+            args = [(A1[j:j+n], P[i, :], coils[:, j:j+n]) for j in range(0, coils.shape[1], n)]
 
             # Compute the magnetic field in parallel for coil segments
             B_segments.append(pool.map(calculate_field, args))
@@ -507,6 +516,10 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
             pd.DataFrame: A DataFrame containing the grid coordinates and magnetic field components.
                         Columns: ['X', 'Y', 'Z', 'Bx', 'By', 'Bz'].
         """
+    
+    # map the spides differential with number of turns
+    N_arr = np.repeat(coil_params.N, np.repeat(spires_np.shape[2], spires_np.shape[0]))
+
     # Generate the X-Y grid based on the coil dimensions and grid step size    
     result = []  # List to store the simulation results
 
@@ -537,7 +550,7 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
         P_batch = np.stack([X_batch, Y_batch, Z_batch], axis=1)
 
         # Calculate the magnetic field at the batch points
-        B = magnetic_field_coil_parallel(P_batch, coil_params.N, coil_params.I, coils, n)
+        B = magnetic_field_coil_parallel(P_batch, N_arr, coil_params.I, coils, n)
 
         # Store the results in the format (X, Y, Z, Bx, By, Bz)
         result += list(zip(P_batch[:, 0], P_batch[:, 1], P_batch[:, 2], B[:, 0], B[:, 1], B[:, 2]))
@@ -554,10 +567,10 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
     # Convert the results to a DataFrame for easier data manipulation and visualization
     return pd.DataFrame(result, columns=['X', 'Y', 'Z', 'Bx', 'By', 'Bz'])
 
-def coil_symetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
+def coil_X_symmetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
     """
-    Simulates a coil field while assuming symmetry in the XY, YZ, and XZ planes.
-    
+    Simulates a coil field while assuming symmetry over the X-axis.
+
     Parameters:
     - X, Y, Z: Arrays representing the spatial coordinates.
     - coil_params: Parameters of the coil.
@@ -565,64 +578,97 @@ def coil_symetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable
     - batch_size: Number of elements processed in parallel.
     - enable_progress_bar: Boolean to show progress.
     - n: Number of iterations.
-    
+
     Returns:
     - A DataFrame with the original and symmetrically extended data.
     """
-    
+
     # Find all indices where X is zero
-    idx_zeros = np.where(X == 0)[0]
+    idx_zeros = np.where(X == 0)[0][0]
 
     # Ensure there are zeros to maintain symmetry
     if idx_zeros.size == 0:
         raise ValueError("No zeros found in X. Symmetry cannot be applied.")
 
     # Last zero index to include all relevant values
-    idx_fin = idx_zeros[-1]
+    idx_fin = np.where(X == 0)[0][-1]
 
     # Cut X, Y, Z up to include all zeros
-    X_cropped = X[:idx_fin+1]
-    Y_cropped = Y[:idx_fin+1]
-    Z_cropped = Z[:idx_fin+1]
+    X_cropped = X[:idx_fin+1] if idx_zeros.size > 0 else X
+    Y_cropped = Y[:idx_fin+1] if idx_zeros.size > 0 else Y
+    Z_cropped = Z[:idx_fin+1] if idx_zeros.size > 0 else Y
+
+    #f0 = None
+    #hplot.plot_grid(X_cropped, Y_cropped, Z_cropped, f0)
 
     # Run the simulation with the reduced dataset
     result = coil_simulation_parallel(X_cropped, Y_cropped, Z_cropped, coil_params, spires_np, batch_size, enable_progress_bar, n)
 
-    # Create reflections for the three symmetry planes
-    reflections = []
+    # Ensure result is a DataFrame
+    if not isinstance(result, pd.DataFrame):
+        raise TypeError("Expected result to be a Pandas DataFrame")
 
-    # Reflection in the XZ plane (invert Y)
-    result_yz = result.copy()
-    result_yz["Y"] = -result_yz["Y"]
-    result_yz["By"] = result_yz["By"]  # Invert Y-component of the field
+    # Reflection in the XZ plane (invert Y )
+    plane_XZ = result.copy()
+    plane_XZ["X"] *= -1
+    plane_XZ["Bx"] *= 1
 
-    # Reflection in the XY plane (invert Z)
-    result_xz = result.copy()
-    result_xz["Z"] = -result_xz["Z"]
-    result_xz["Bz"] = result_xz["Bz"]  # Invert Z-component of the field
-
-    # Reflection in the YZ plane (invert X)
-    result_xy = result.copy()
-    result_xy["X"] = -result_xy["X"]
-    result_xy["Bx"] = result_xy["Bx"]  # Invert X-component of the field
-
-    # Add the reflected datasets to the list
-    reflections.extend([result_yz, result_xz, result_xy])
-
-    # Full reflection across all three planes (-X, -Y, -Z)
-    result_xyz = result.copy()
-    result_xyz["X"] = -result_xyz["X"]
-    result_xyz["Y"] = -result_xyz["Y"]
-    result_xyz["Z"] = -result_xyz["Z"]
-    result_xyz["Bx"] = result_xyz["Bx"]
-    result_xyz["By"] = result_xyz["By"]
-    result_xyz["Bz"] = result_xyz["Bz"]
-
-    # Add the fully inverted dataset
-    reflections.append(result_xyz)
+    # Reflection in the XY plane (invert Z )
+    plane_XY = result.copy()
+    plane_XY["X"] *= -1
+    plane_XY["Bx"] *= 1
 
     # Combine all results, remove duplicates, and sort by coordinates
-    result_final = pd.concat([result] + reflections).drop_duplicates().sort_values(by=["X", "Y", "Z"]).reset_index(drop=True)
+    result_final = pd.concat([result, plane_XZ, plane_XY]).drop_duplicates()
 
     return result_final
 
+
+#def coil_symmetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
+    """
+    #Simula el campo de una bobina asumiendo simetría sobre el eje X.
+    
+    #Parámetros:
+    #- X, Y, Z: Arrays con las coordenadas espaciales.
+    #- coil_params: Parámetros de la bobina.
+    #- spires_np: Número de espiras.
+    #- batch_size: Número de elementos procesados en paralelo.
+    #- enable_progress_bar: Muestra la barra de progreso.
+    #- n: Número de iteraciones.
+    
+    #Retorna:
+    #- DataFrame con los datos originales y extendidos simétricamente.
+    """
+ #   # Máscaras para seleccionar solo los puntos en los planos reducidos
+ #   mask_yz = (X == 0) & (Y >= 0)  # Mitad positiva del plano YZ
+ #   mask_other_planes = (Z == 0) & (X >= 0) | (Y == 0) & (X >= 0)  # XY y XZ
+    
+    # Aplicar máscaras
+ #   X_YZ, Y_YZ, Z_YZ = X[mask_yz], Y[mask_yz], Z[mask_yz]
+ #   X_other, Y_other, Z_other = X[mask_other_planes], Y[mask_other_planes], Z[mask_other_planes]
+    
+    # Ejecutar simulación para YZ
+ #  result_YZ = coil_simulation_parallel(X_YZ, Y_YZ, Z_YZ, coil_params, spires_np, batch_size, enable_progress_bar, n)
+    
+    # Reflejo del campo en el plano XZ (invertir Y)
+ #   plane_YZ = result_YZ.copy()
+ #   plane_YZ["Y"] *= -1
+    
+    # Unir los resultados de YZ
+ #   result_YZ_complete = pd.concat([result_YZ, plane_YZ], ignore_index=True).drop_duplicates()
+    
+    # Simulación en los otros planos
+ #   result_other = coil_simulation_parallel(X_other, Y_other, Z_other, coil_params, spires_np, batch_size, enable_progress_bar, n)
+    
+    # Aplicar simetrías en XY y XZ
+ #   plane_XZ = result_other.copy()
+ #   plane_XZ["X"] *= -1
+    
+ #   plane_XY = result_other.copy()
+ #   plane_XY["X"] *= -1
+    
+    # Unir todos los resultados
+ #   result_final = pd.concat([result_other, plane_XZ, plane_XY], ignore_index=True).drop_duplicates()
+ #   result = pd.concat([result_YZ_complete, result_final], ignore_index=True).drop_duplicates()
+    
+ #   return result
