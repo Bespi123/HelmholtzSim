@@ -4,6 +4,7 @@ import pandas as pd
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 from typing import Union
+import src.plotMagneticField as hplot
 
 # Define global constants
 MU_0 = 4 * np.pi * 1e-7  # Permeability of free space
@@ -554,10 +555,10 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
     # Convert the results to a DataFrame for easier data manipulation and visualization
     return pd.DataFrame(result, columns=['X', 'Y', 'Z', 'Bx', 'By', 'Bz'])
 
-def coil_symetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
+def coil_X_symmetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
     """
-    Simulates a coil field while assuming symmetry in the XY, YZ, and XZ planes.
-    
+    Simulates a coil field while assuming symmetry over the X-axis.
+
     Parameters:
     - X, Y, Z: Arrays representing the spatial coordinates.
     - coil_params: Parameters of the coil.
@@ -565,64 +566,97 @@ def coil_symetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable
     - batch_size: Number of elements processed in parallel.
     - enable_progress_bar: Boolean to show progress.
     - n: Number of iterations.
-    
+
     Returns:
     - A DataFrame with the original and symmetrically extended data.
     """
-    
+
     # Find all indices where X is zero
-    idx_zeros = np.where(X == 0)[0]
+    idx_zeros = np.where(X == 0)[0][0]
 
     # Ensure there are zeros to maintain symmetry
     if idx_zeros.size == 0:
         raise ValueError("No zeros found in X. Symmetry cannot be applied.")
 
     # Last zero index to include all relevant values
-    idx_fin = idx_zeros[-1]
+    idx_fin = np.where(X == 0)[0][-1]
 
     # Cut X, Y, Z up to include all zeros
-    X_cropped = X[:idx_fin+1]
-    Y_cropped = Y[:idx_fin+1]
-    Z_cropped = Z[:idx_fin+1]
+    X_cropped = X[:idx_fin+1] if idx_zeros.size > 0 else X
+    Y_cropped = Y[:idx_fin+1] if idx_zeros.size > 0 else Y
+    Z_cropped = Z[:idx_fin+1] if idx_zeros.size > 0 else Y
+
+    #f0 = None
+    #hplot.plot_grid(X_cropped, Y_cropped, Z_cropped, f0)
 
     # Run the simulation with the reduced dataset
     result = coil_simulation_parallel(X_cropped, Y_cropped, Z_cropped, coil_params, spires_np, batch_size, enable_progress_bar, n)
 
-    # Create reflections for the three symmetry planes
-    reflections = []
+    # Ensure result is a DataFrame
+    if not isinstance(result, pd.DataFrame):
+        raise TypeError("Expected result to be a Pandas DataFrame")
 
-    # Reflection in the XZ plane (invert Y)
-    result_yz = result.copy()
-    result_yz["Y"] = -result_yz["Y"]
-    result_yz["By"] = result_yz["By"]  # Invert Y-component of the field
+    # Reflection in the XZ plane (invert Y )
+    plane_XZ = result.copy()
+    plane_XZ["X"] *= -1
+    plane_XZ["Bx"] *= 1
 
-    # Reflection in the XY plane (invert Z)
-    result_xz = result.copy()
-    result_xz["Z"] = -result_xz["Z"]
-    result_xz["Bz"] = result_xz["Bz"]  # Invert Z-component of the field
-
-    # Reflection in the YZ plane (invert X)
-    result_xy = result.copy()
-    result_xy["X"] = -result_xy["X"]
-    result_xy["Bx"] = result_xy["Bx"]  # Invert X-component of the field
-
-    # Add the reflected datasets to the list
-    reflections.extend([result_yz, result_xz, result_xy])
-
-    # Full reflection across all three planes (-X, -Y, -Z)
-    result_xyz = result.copy()
-    result_xyz["X"] = -result_xyz["X"]
-    result_xyz["Y"] = -result_xyz["Y"]
-    result_xyz["Z"] = -result_xyz["Z"]
-    result_xyz["Bx"] = result_xyz["Bx"]
-    result_xyz["By"] = result_xyz["By"]
-    result_xyz["Bz"] = result_xyz["Bz"]
-
-    # Add the fully inverted dataset
-    reflections.append(result_xyz)
+    # Reflection in the XY plane (invert Z )
+    plane_XY = result.copy()
+    plane_XY["X"] *= -1
+    plane_XY["Bx"] *= 1
 
     # Combine all results, remove duplicates, and sort by coordinates
-    result_final = pd.concat([result] + reflections).drop_duplicates().sort_values(by=["X", "Y", "Z"]).reset_index(drop=True)
+    result_final = pd.concat([result, plane_XZ, plane_XY]).drop_duplicates()
 
     return result_final
 
+
+#def coil_symmetric_simulation(X, Y, Z, coil_params, spires_np, batch_size, enable_progress_bar=True, n=100):
+    """
+    #Simula el campo de una bobina asumiendo simetría sobre el eje X.
+    
+    #Parámetros:
+    #- X, Y, Z: Arrays con las coordenadas espaciales.
+    #- coil_params: Parámetros de la bobina.
+    #- spires_np: Número de espiras.
+    #- batch_size: Número de elementos procesados en paralelo.
+    #- enable_progress_bar: Muestra la barra de progreso.
+    #- n: Número de iteraciones.
+    
+    #Retorna:
+    #- DataFrame con los datos originales y extendidos simétricamente.
+    """
+ #   # Máscaras para seleccionar solo los puntos en los planos reducidos
+ #   mask_yz = (X == 0) & (Y >= 0)  # Mitad positiva del plano YZ
+ #   mask_other_planes = (Z == 0) & (X >= 0) | (Y == 0) & (X >= 0)  # XY y XZ
+    
+    # Aplicar máscaras
+ #   X_YZ, Y_YZ, Z_YZ = X[mask_yz], Y[mask_yz], Z[mask_yz]
+ #   X_other, Y_other, Z_other = X[mask_other_planes], Y[mask_other_planes], Z[mask_other_planes]
+    
+    # Ejecutar simulación para YZ
+ #  result_YZ = coil_simulation_parallel(X_YZ, Y_YZ, Z_YZ, coil_params, spires_np, batch_size, enable_progress_bar, n)
+    
+    # Reflejo del campo en el plano XZ (invertir Y)
+ #   plane_YZ = result_YZ.copy()
+ #   plane_YZ["Y"] *= -1
+    
+    # Unir los resultados de YZ
+ #   result_YZ_complete = pd.concat([result_YZ, plane_YZ], ignore_index=True).drop_duplicates()
+    
+    # Simulación en los otros planos
+ #   result_other = coil_simulation_parallel(X_other, Y_other, Z_other, coil_params, spires_np, batch_size, enable_progress_bar, n)
+    
+    # Aplicar simetrías en XY y XZ
+ #   plane_XZ = result_other.copy()
+ #   plane_XZ["X"] *= -1
+    
+ #   plane_XY = result_other.copy()
+ #   plane_XY["X"] *= -1
+    
+    # Unir todos los resultados
+ #   result_final = pd.concat([result_other, plane_XZ, plane_XY], ignore_index=True).drop_duplicates()
+ #   result = pd.concat([result_YZ_complete, result_final], ignore_index=True).drop_duplicates()
+    
+ #   return result
