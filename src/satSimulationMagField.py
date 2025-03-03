@@ -92,19 +92,38 @@ def process_time(current_time):
         "Bz ECI (nT)": bz_eci
     }
 
-def simulate_satellite(start_date, end_date, time_step):
+def simulate_satellite(start_date, end_date, time_step, batch_size=100):
     """
-    Simulate satellite propagation over a given time range with parallel processing.
-    """
-    # Generate a range of timestamps
-    time_range = [start_date + i * time_step for i in range(int((end_date - start_date) / time_step) + 1)]
+    Simulate satellite propagation over a given time range in batches with parallel processing.
 
-    # Parallel processing
+    Parameters:
+    - start_date: datetime, start of the simulation
+    - end_date: datetime, end of the simulation
+    - time_step: timedelta, time interval between steps
+    - batch_size: int, number of timestamps processed in each batch
+
+    Returns:
+    - DataFrame containing results
+    """
+    # Ensure time_step is in seconds
+    time_step_seconds = time_step.total_seconds()
+
+    # Generate a range of timestamps
+    num_steps = int((end_date - start_date).total_seconds() / time_step_seconds) + 1
+    time_range = [start_date + timedelta(seconds=i * time_step_seconds) for i in range(num_steps)]
+
+    # Split the time_range into batches
+    time_batches = np.array_split(time_range, max(1, len(time_range) // batch_size))
+
+    results = []
     with ProcessPoolExecutor() as executor:
-        results = list(filter(None, executor.map(process_time, time_range)))
+        for batch in time_batches:
+            batch_results = list(filter(None, executor.map(process_time, batch)))
+            results.extend(batch_results)  # Append batch results
 
     # Convert results to DataFrame
     return pd.DataFrame(results)
+
 
 def calculate_max_min_values(df, select):
     """
