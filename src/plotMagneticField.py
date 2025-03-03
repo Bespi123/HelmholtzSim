@@ -520,7 +520,7 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
         heatmap_data = df.pivot_table(index=x_label, columns=y_label, values=index, aggfunc='mean')
 
         # Fill NaN values in the grid
-        heatmap_data = heatmap_data.fillna(method='ffill').fillna(method='bfill')
+        #heatmap_data = heatmap_data.fillna(method='ffill').fillna(method='bfill')
 
         # If there are not enough data points, create a NaN matrix
         if heatmap_data.shape[0] < 2 or heatmap_data.shape[1] < 2:
