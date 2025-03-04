@@ -437,27 +437,25 @@ def calculate_field(args):
         args (tuple): A tuple containing:
             A1 (float): Proportionality constant for the magnetic field (e.g., permeability times current).
             P (numpy.ndarray): The point in 3D space where the magnetic field is calculated (shape: (3,)).
-            side (numpy.ndarray): 3D coordinates of the coil segments (shape: (num_sides, 3, num_points)).
+            side (numpy.ndarray): 3D coordinates of the coil segments (shape: (3, num_points)).
     
     Returns:
         numpy.ndarray: The magnetic field vector (shape: (3,)).
     """
-    A1, P, side = args
-    B = np.zeros(3)  # Initialize the magnetic field vector to zero
-    dl = np.diff(side, axis=1)  # Differential length elements for each segment of the coil
-    
- # Try to compute the differential length elements for each segment of the coil
+    A1, P, side = args   
+    # Compute the differential length elements (dl) for all segments at once
+    dl = np.diff(side, axis=1)  # Shape: (3, num_segments)
     try:
-        # Loop over each differential length element in the current side
-        for j in range(dl.shape[1]):
-            # Vector from the differential element to the point of interest
-            R = P - side[:, j]
-            d1 = dl[:, j]
-            # Calculate the contribution to the magnetic field (Biot-Savart Law)
-            dB = (A1[j]) * np.cross(d1, R) / np.linalg.norm(R)**3
-                
-            # Accumulate the contribution to the total magnetic field
-            B += dB
+        # Compute the displacement vectors (R) from each segment to the observation point
+        R = P[:, np.newaxis] - side[:, :-1]  # Shape: (3, num_segments)
+        # Compute the Euclidean norm of R (distance from segment to point)
+        norm_R = np.linalg.norm(R, axis=0)  # Shape: (num_segments,)
+        # Avoid division by zero by adding a small epsilon where norm_R is too small
+        norm_R = np.where(norm_R < 1e-9, 1e-9, norm_R)
+        # Compute dB using vectorized cross-product and division
+        dB = (A1[:-1] * np.cross(dl, R, axis=0)) / (norm_R**3)  # Shape: (3, num_segments)
+        # Sum over all segments to get the total field
+        B = np.sum(dB, axis=1)  # Shape: (3,)
     except Exception as e:
         print("Error: ", e)
         raise
@@ -544,7 +542,7 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
     for k in range(0, len(X_flat), batch_size):
         X_batch = X_flat[k: k + batch_size]  # Batch of X coordinates
         Y_batch = Y_flat[k: k + batch_size]  # Batch of Y coordinates
-        Z_batch = Z_flat[k: k + batch_size]  # Batch of Y coordinates
+        Z_batch = Z_flat[k: k + batch_size]  # Batch of Z coordinates
 
         # Generate 3D points for each batch in three orthogonal planes
         P_batch = np.stack([X_batch, Y_batch, Z_batch], axis=1)
