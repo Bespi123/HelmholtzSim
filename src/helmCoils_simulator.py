@@ -542,7 +542,7 @@ def coil_simulation_parallel(X, Y, Z, coil_params, spires_np, batch_size, enable
     for k in range(0, len(X_flat), batch_size):
         X_batch = X_flat[k: k + batch_size]  # Batch of X coordinates
         Y_batch = Y_flat[k: k + batch_size]  # Batch of Y coordinates
-        Z_batch = Z_flat[k: k + batch_size]  # Batch of Y coordinates
+        Z_batch = Z_flat[k: k + batch_size]  # Batch of Z coordinates
 
         # Generate 3D points for each batch in three orthogonal planes
         P_batch = np.stack([X_batch, Y_batch, Z_batch], axis=1)
