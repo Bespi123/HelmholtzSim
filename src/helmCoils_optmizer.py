@@ -76,10 +76,10 @@ def resistance_coil(awg_size, N, L):
 
 def calculate_loop_length(coordinates):
     """
-    Calculates the length of each loop in an array of shape (2,3,N).
+    Calculates the length of each loop in an array of shape (coil_number,3,N).
     
     Parameters:
-        coordinates (numpy.ndarray): Array of coordinates with shape (2,3,N)
+        coordinates (numpy.ndarray): Array of coordinates with shape (coil_number,3,N)
     
     Returns:
         list: List with the lengths of each loop
@@ -125,25 +125,47 @@ def select_awg(current, awg_data):
     return best_awg
 
 def get_slope(coil, spires):
+    """
+    Calculate the slope of the magnetic field (B_x) with respect to the current (I) for a given coil configuration.
+
+    Args:
+        coil: The coil object, which can be updated with parameters like turns and current.
+        spires: The number of spires (turns) in the coil.
+
+    Returns:
+        float: The slope of the linear fit between current (I) and the magnetic field (B_x).
+
+    Notes:
+        - The function simulates the magnetic field (B_x) for different current values (I) and fits a linear model to the data.
+        - The slope represents the relationship between the current and the magnetic field, which is useful for estimating the coil's sensitivity.
+        - The simulation is performed in parallel for efficiency, and progress bars are disabled to reduce output clutter.
+    """
     # Initialize simulation data
     data = []
 
+    # Generate a range of points in space for the simulation
+    # Here, X, Y, Z are all set to [0, 0], meaning the simulation is focused on the origin.
     X, Y, Z = sim.generate_range([0, 0], [0, 0], [0, 0], step_size_x=0.01)
 
-    # Compute slope for B_x estimation
+    # Compute slope for B_x estimation by varying the current (I)
     for I in range(1, 5):
+        # Update the coil parameters with the current value and a fixed number of turns
         coil.update_parameters(turns=1, current=I)
+        # Run the coil simulation in parallel
         results = sim.coil_simulation_parallel(
             X, Y, Z, coil, spires, batch_size = 120, enable_progress_bar=False, n=150
         )
+        # Store the current (I) and the corresponding B_x value at the first point
         data.append([I, results['Bx'][0]])
 
-    # Convert to NumPy array
+    # Convert the data to a NumPy array for easier manipulation
     data = np.array(data)
 
-    # Ensure uniform shape
+    # Perform a linear fit to the data: B_x = slope * I + intercept
+    # The slope represents the sensitivity of the magnetic field to the current
     slope, intercept = np.polyfit(data[:, 0], np.sum(coil.N) * data[:, 1], 1)
-    print(slope)
+
+    # Return the slope
     return slope    
 
 # Define the optimizer as a class:
