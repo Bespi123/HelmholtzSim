@@ -76,9 +76,19 @@ helmholtzCoilsDesigner/
 ```
 
 ## References
-
-- Sudhoff, S.D. (2021). *Power Magnetic Devices*. Wiley.
-- Young, H.D., & Freedman, R.A. (2008). *University Physics with Modern Physics*.
+- B. Espinoza-Garcia, X. Wang, and P. R. Yanyachi, “Adaptive controller approach for a three-axis Helmholtz magnetic test-bed to test detumbling simulations in the GWSat satellite,” \textit{International Journal of Aeronautical and Space Sciences}, pp. 1–19, 2025.
+- E. H. Cayo, J. P. Contreras, and P. R. Arapa, “Design and implementation of a geomagnetic field simulator for small satellites,” in \textit{III IAA Latin American CubeSat Workshop}, Ubatuba, Brazil, Jan. 2019, accessed: 2025-02-16. [Online]. Available: \url{https://www.researchgate.net/publication/330116920}
+- R. C. da Silva, I. S. K. Ishioka, C. Cappelletti, S. Battistini, and R. A. Borges, “Helmholtz cage design and validation for nanosatellites HWIL testing,” \textit{IEEE Transactions on Aerospace and Electronic Systems}, vol. 55, no. 6, pp. 3050–3061, 2019.
+- A. J. Mäkinen, R. Zetter, J. Iivanainen, K. C. J. Zevenhoven, L. Parkkonen, and R. J. Ilmoniemi, “Magnetic-field modeling with surface currents. Part I: Physical and computational principles of BfieldTools,” \textit{Journal of Applied Physics}, vol. 128, no. 6, p. 063906, 2020. [Online]. Available: \url{https://doi.org/10.1063/5.0016090}
+- R. Zetter, A. J. Mäkinen, J. Iivanainen, K. C. J. Zevenhoven, R. J. Ilmoniemi, and L. Parkkonen, “Magnetic-field modeling with surface currents. Part II: Implementation and usage of BfieldTools,” \textit{Journal of Applied Physics}, vol. 128, no. 6, p. 063905, 2020. [Online]. Available: \url{https://doi.org/10.1063/5.0016087}
+- S. Meng et al., “MagCoilCalc: A Python package for modeling and optimization of axisymmetric magnet coils generating uniform magnetic fields for noble gas spin-polarizers,” \textit{SoftwareX}, vol. 16, p. 100805, 2021.
+- C. Zhao et al., “Design and simulation of a magnetization drive coil based on the Helmholtz principle and an experimental study,” \textit{Micromachines}, vol. 14, no. 1, 2023. [Online]. Available: \url{https://www.mdpi.com/2072-666X/14/1/152}
+- X. Zhu et al., “Optimization of composite Helmholtz coils towards high magnetic uniformity,” \textit{Engineering Science and Technology, an International Journal}, vol. 47, p. 101539, 2023. [Online]. Available: \url{https://www.sciencedirect.com/science/article/pii/S2215098623002173}
+- Q. Cao et al., “Optimization of a coil system for generating uniform magnetic fields inside a cubic magnetic shield,” \textit{Energies}, vol. 11, no. 3, 2018. [Online]. Available: \url{https://www.mdpi.com/1996-1073/11/3/608}
+- K. Wang et al., “Octagonal three-dimensional shim coil structure and design in atomic sensors for magnetic field detection,” \textit{IEEE Sensors Journal}, vol. 22, no. 6, pp. 5596–5605, 2022.
+- J. Uscategui et al., “High-precision magnetic testbed design and simulation for LEO small-satellite control test,” \textit{Aerospace}, vol. 10, no. 7, 2023. [Online]. Available: \url{https://www.mdpi.com/2226-4310/10/7/640}
+- S. D. Sudhoff, \textit{Appendix A: Conductor Data and Wire Gauges}. John Wiley \& Sons, Ltd, 2021, pp. 589–591. [Online]. Available: \url{https://onlinelibrary.wiley.com/doi/abs/10.1002/9781119674658.app1}
+- H. Young and R. Freedman, \textit{Sears and Zemansky’s University Physics: With Modern Physics}. Vol. 2. New York: Pearson, 2008.
 
 ## License
 
