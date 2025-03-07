@@ -170,17 +170,40 @@ def get_slope(coil, spires):
 
 # Define the optimizer as a class:
 class Source_optimizer:
+    """
+    A class to optimize the parameters of a coil (number of turns and current) to achieve a desired magnetic field.
+
+    Attributes:
+        desired_magField (float): The desired magnetic field strength to achieve.
+        coil: The coil object, which can be updated with parameters like turns and current.
+        spires: The number of spires (turns) in the coil.
+        V_limit (float, optional): A fixed voltage limit for the coil. If None, no voltage limit is applied.
+        max_N (int): The maximum number of turns allowed in the coil.
+        max_I (float): The maximum current allowed in the coil.
+        pop (int): The population size for the genetic algorithm.
+        gen (int): The number of generations for the genetic algorithm.
+        mut (float): The mutation rate for the genetic algorithm.
+        perimeter (float): The total perimeter of the coil, calculated from the spires.
+        slope (float): The slope of the magnetic field (B_x) with respect to the current (I), calculated using `get_slope`.
+        min_I (float): The minimum current allowed in the coil.
+        min_N (int): The minimum number of turns allowed in the coil.
+        fitness_cache (dict): A local cache to store fitness evaluations for efficiency.
+    """
     def __init__(self, desired_magField, coil, spires, fixed_V_limit=None, max_N = 30,
                  max_I = 10, population = 20, generations = 50, mutation = 0.2):
         """
-        Parameters:
-          desired_size: base size parameter for coil dimensions.
-          spires_function: function to generate coil geometry.
-          N: Number of turns.
-          I: Current.
-          fix_L: Boolean flag; if True, L will remain fixed.
-          fixed_L_value: If fix_L is True, the fixed value for L.
-          grid_length_size: Parameter used in fitness evaluation.
+        Initialize the Source_optimizer with the desired magnetic field, coil, and optimization parameters.
+
+        Args:
+            desired_magField (float): The desired magnetic field strength to achieve.
+            coil: The coil object, which can be updated with parameters like turns and current.
+            spires: The spires geometry in (coils_number,3,num_seg) shape.
+            fixed_V_limit (float, optional): A fixed voltage limit for the coil. If None, no voltage limit is applied.
+            max_N (int): The maximum number of turns allowed in the coil. Default is 30.
+            max_I (float): The maximum current allowed in the coil. Default is 10.
+            population (int): The population size for the genetic algorithm. Default is 20.
+            generations (int): The number of generations for the genetic algorithm. Default is 50.
+            mutation (float): The mutation rate for the genetic algorithm. Default is 0.2.
         """
         self.desired_magField = desired_magField
         self.coil = coil
@@ -192,15 +215,15 @@ class Source_optimizer:
         self.gen = generations
         self.mut = mutation
 
-        # Spires perimeter and get slope
+        # Calculate the total perimeter of the coil and the slope of B_x vs. I
         self.perimeter = np.sum(calculate_loop_length(spires))
         self.slope = get_slope(coil, spires)
 
-        # Set ranges for N and V based on fix_V flag.
+        # Set the minimum allowed values for current and number of turns
         self.min_I = 0.001
         self.min_N = 1
 
-        # A local cache for fitness evaluations
+        # Initialize a cache to store fitness evaluations for efficiency
         self.fitness_cache = {}
 
         # Set up DEAP toolbox.
