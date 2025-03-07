@@ -273,13 +273,18 @@ class Source_optimizer:
         magnetic field meets or exceeds the desired value, and that the voltage does not exceed 
         the given limit.
 
-        Parameters:
+        Args:
             individual (list): A list containing two elements:
                 - I (float): Current in amperes.
                 - N (float): Number of turns in the coil.
 
         Returns:
             tuple: A single-element tuple containing the fitness value, where lower is better.
+
+        Notes:
+            - The fitness function penalizes solutions that do not meet the desired magnetic field strength or exceed the voltage limit.
+            - Power consumption is minimized as part of the fitness evaluation.
+            - A cache is used to avoid redundant fitness evaluations for the same (I, N) values.
         """
 
         # Extract individual parameters
@@ -294,6 +299,7 @@ class Source_optimizer:
         # Access the coil object stored in the class
         coil = self.coil
         coil.update_parameters(turns=N)
+        
         # Compute total number of turns
         N_total = np.sum(coil.N)
 
