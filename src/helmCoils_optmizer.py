@@ -3,8 +3,19 @@ import random
 from deap import base, creator, tools, algorithms
 import src.helmCoils_simulator as sim
 import src.plotMagneticField as hplot
-# AWG data (remains global if it is constant)
-# Constants
+
+
+# AWG data (remains global)
+# AWG (American Wire Gauge) data for various wire sizes, including diameter,
+# cross-sectional area, and current-carrying capacity.
+# Units:
+#   - diameter_mm: Diameter in millimeters (mm)
+#   - area_mm2: Cross-sectional area in square millimeters (mm²)
+#   - current_A: Current-carrying capacity in amperes (A)
+# Source: Table A.2 from 'Sudhoff, S.D. (2021). Appendix A: Conductor Data and Wire 
+# Gauges. In Power Magnetic Devices, S.D. Sudhoff (Ed.).
+# https://doi.org/10.1002/9781119674658.app1'
+
 awg_data = {
     40: {"diameter_mm": 0.0799, "area_mm2": 0.0031, "current_A": 0.014},
     38: {"diameter_mm": 0.1007, "area_mm2": 0.0049, "current_A": 0.02},
@@ -31,18 +42,402 @@ awg_data = {
     -4: {"diameter_mm": 11.684, "area_mm2": 135.0, "current_A": 260.0}
 }
 
-
 # A constant that is truly global and not part of the optimizer's configuration:
-RHO = 1.68e-8  # Resistivity of copper in ohm-meters
+# Resistivity of copper in ohm-meters at 20°C (used for calculating wire resistance, etc.).
+# Source: Sears and Zemansky's University Physics, Vol. 2, Table 25.1.
+RHO = 1.72e-8  # ohm-meters
 
-# Optionally, a helper function if needed
 def resistance_coil(awg_size, N, L):
+    """
+    Calculate the resistance of a coil made from a given AWG wire size.
+
+    Args:
+        awg_size (int): The American Wire Gauge (AWG) size of the wire.
+        N (int): The number of turns in the coil.
+        L (float): The average length of one turn in meters.
+
+    Returns:
+        float: The resistance of the coil in ohms.
+
+    Raises:
+        ValueError: If the provided AWG size is not available in the `awg_data` dictionary.
+
+    Notes:
+        - The resistivity of copper (RHO) is assumed to be 1.72e-8 ohm-meters.
+        - The length of the wire is calculated as L * N, assuming L as the perimeter of the coil.
+        - The cross-sectional area of the wire is converted from mm² to m² for unit consistency.
+    """
     info = awg_data.get(awg_size)
     if info is None:
         raise ValueError("AWG gauge not available.")
-    length = 4 * L * N
+    length = L * N
     area = info['area_mm2'] * 1e-6
     return RHO * (length / area)
+
+def calculate_loop_length(coordinates):
+    """
+    Calculates the length of each loop in an array of shape (coil_number,3,N).
+    
+    Parameters:
+        coordinates (numpy.ndarray): Array of coordinates with shape (coil_number,3,N)
+    
+    Returns:
+        list: List with the lengths of each loop
+    """
+    num_loops = coordinates.shape[0]
+    lengths = []
+    
+    for i in range(num_loops):
+        # Get coordinates of loop i
+        x, y, z = coordinates[i]
+        
+        # Compute differences between consecutive points
+        dx = np.diff(x)
+        dy = np.diff(y)
+        dz = np.diff(z)
+        
+        # Compute Euclidean distance between consecutive points and sum them
+        length = np.sum(np.sqrt(dx**2 + dy**2 + dz**2))
+        lengths.append(length)
+        
+    return lengths
+
+def select_awg(current, awg_data):
+    """
+    Selects the smallest AWG that can handle at least the given current.
+    
+    Parameters:
+        current (float): The required current in amperes (A).
+        awg_data (dict): Dictionary containing AWG data.
+    
+    Returns:
+        int: The closest AWG number that meets or exceeds the current requirement.
+    """
+    # Filter AWG values that can handle at least the required current
+    valid_awgs = [awg for awg in awg_data if awg_data[awg]["current_A"] >= current]
+    
+    if not valid_awgs:
+        return None  # No valid AWG found
+    
+    # Select the AWG with the smallest diameter (largest AWG number)
+    best_awg = min(valid_awgs, key=lambda awg: awg_data[awg]["current_A"])
+    
+    return best_awg
+
+def get_slope(coil, spires):
+    """
+    Calculate the slope of the magnetic field (B_x) with respect to the current (I) for a given coil configuration.
+
+    Args:
+        coil: The coil object, which can be updated with parameters like turns and current.
+        spires: The number of spires (turns) in the coil.
+
+    Returns:
+        float: The slope of the linear fit between current (I) and the magnetic field (B_x).
+
+    Notes:
+        - The function simulates the magnetic field (B_x) for different current values (I) and fits a linear model to the data.
+        - The slope represents the relationship between the current and the magnetic field, which is useful for estimating the coil's sensitivity.
+        - The simulation is performed in parallel for efficiency, and progress bars are disabled to reduce output clutter.
+    """
+    # Initialize simulation data
+    data = []
+
+    # Generate a range of points in space for the simulation
+    # Here, X, Y, Z are all set to [0, 0], meaning the simulation is focused on the origin.
+    X, Y, Z = sim.generate_range([0, 0], [0, 0], [0, 0], step_size_x=0.01)
+
+    # Compute slope for B_x estimation by varying the current (I)
+    for I in range(1, 5):
+        # Update the coil parameters with the current value and a fixed number of turns
+        coil.update_parameters(turns=1, current=I)
+        # Run the coil simulation in parallel
+        results = sim.coil_simulation_parallel(
+            X, Y, Z, coil, spires, batch_size = 120, enable_progress_bar=False, n=150
+        )
+        # Store the current (I) and the corresponding B_x value at the first point
+        data.append([I, results['Bx'][0]])
+
+    # Convert the data to a NumPy array for easier manipulation
+    data = np.array(data)
+
+    # Perform a linear fit to the data: B_x = slope * I + intercept
+    # The slope represents the sensitivity of the magnetic field to the current
+    slope, intercept = np.polyfit(data[:, 0], np.sum(coil.N) * data[:, 1], 1)
+
+    # Return the slope
+    return slope    
+
+# Define the optimizer as a class:
+class Source_optimizer:
+    """
+    A class to optimize the parameters of a coil (number of turns and current) to achieve a desired magnetic field.
+
+    Attributes:
+        desired_magField (float): The desired magnetic field strength to achieve.
+        coil: The coil object, which can be updated with parameters like turns and current.
+        spires: The number of spires (turns) in the coil.
+        V_limit (float, optional): A fixed voltage limit for the coil. If None, no voltage limit is applied.
+        max_N (int): The maximum number of turns allowed in the coil.
+        max_I (float): The maximum current allowed in the coil.
+        pop (int): The population size for the genetic algorithm.
+        gen (int): The number of generations for the genetic algorithm.
+        mut (float): The mutation rate for the genetic algorithm.
+        perimeter (float): The total perimeter of the coil, calculated from the spires.
+        slope (float): The slope of the magnetic field (B_x) with respect to the current (I), calculated using `get_slope`.
+        min_I (float): The minimum current allowed in the coil.
+        min_N (int): The minimum number of turns allowed in the coil.
+        fitness_cache (dict): A local cache to store fitness evaluations for efficiency.
+    """
+    def __init__(self, desired_magField, coil, spires, fixed_V_limit=None, max_N = 30,
+                 max_I = 10, population = 20, generations = 50, mutation = 0.2):
+        """
+        Initialize the Source_optimizer with the desired magnetic field, coil, and optimization parameters.
+
+        Args:
+            desired_magField (float): The desired magnetic field strength to achieve.
+            coil: The coil object, which can be updated with parameters like turns and current.
+            spires: The spires geometry in (coils_number,3,num_seg) shape.
+            fixed_V_limit (float, optional): A fixed voltage limit for the coil. If None, no voltage limit is applied.
+            max_N (int): The maximum number of turns allowed in the coil. Default is 30.
+            max_I (float): The maximum current allowed in the coil. Default is 10.
+            population (int): The population size for the genetic algorithm. Default is 20.
+            generations (int): The number of generations for the genetic algorithm. Default is 50.
+            mutation (float): The mutation rate for the genetic algorithm. Default is 0.2.
+        """
+        self.desired_magField = desired_magField
+        self.coil = coil
+        self.spires = spires
+        self.V_limit = fixed_V_limit
+        self.max_N  = max_N
+        self.max_I  = max_I
+        self.pop = population
+        self.gen = generations
+        self.mut = mutation
+
+        # Calculate the total perimeter of the coil and the slope of B_x vs. I
+        self.perimeter = np.sum(calculate_loop_length(spires))
+        self.slope = get_slope(coil, spires)
+
+        # Set the minimum allowed values for current and number of turns
+        self.min_I = 0.001
+        self.min_N = 1
+
+        # Initialize a cache to store fitness evaluations for efficiency
+        self.fitness_cache = {}
+
+        # Set up DEAP toolbox.
+        self._setup_deap()
+
+    def _setup_deap(self):
+        # Create DEAP types if not already created.
+        if not hasattr(creator, "FitnessMin"):
+            creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
+        if not hasattr(creator, "Individual"):
+            creator.create("Individual", list, fitness=creator.FitnessMin)
+
+        self.toolbox = base.Toolbox()
+
+        # Register genetic operators
+        self.toolbox.register("individual", tools.initIterate, creator.Individual, self.init_individual)
+        self.toolbox.register("population", tools.initRepeat, list, self.toolbox.individual)
+        self.toolbox.register("evaluate", lambda ind: self.fitness_function(ind)) #lambda used to add new parameters
+        self.toolbox.register("mate", self.long_jump_crossover)
+        self.toolbox.register("mutate", self.mutate_individual, mu=0, sigma=0.1, indpb=0.4)
+        self.toolbox.register("select", tools.selTournament, tournsize=3)
+
+        # Register attribute generators
+        self.toolbox.register("attr_I", random.uniform, self.min_I, self.max_I)
+        self.toolbox.register("attr_N", random.uniform, self.min_N, self.max_N)
+
+    def apply_constraints(self, individual):
+        individual[0] = round(max(self.min_I, min(self.max_I, individual[0])), 2)
+        individual[1] = round(max(self.min_N, min(self.max_N, individual[1])), 0)
+        return individual
+
+    def init_individual(self):
+        # Wider range for initialization
+        initial_I = random.uniform(self.min_I * 0.5, self.max_I * 1.5)  # Extends beyond normal range
+        initial_N = random.uniform(self.min_N * 0.5, self.max_N * 1.5)  # Allows more extreme values
+
+        # Ensure the values stay within constraints
+        ind = creator.Individual([initial_I, initial_N])
+        return self.apply_constraints(ind)
+
+
+    def fitness_function(self, individual):
+        """
+        Evaluates the fitness of an individual (I, N) in the genetic algorithm.
+
+        The goal is to minimize the power consumption while ensuring that the generated 
+        magnetic field meets or exceeds the desired value, and that the voltage does not exceed 
+        the given limit.
+
+        Args:
+            individual (list): A list containing two elements:
+                - I (float): Current in amperes.
+                - N (float): Number of turns in the coil.
+
+        Returns:
+            tuple: A single-element tuple containing the fitness value, where lower is better.
+
+        Notes:
+            - The fitness function penalizes solutions that do not meet the desired magnetic field strength or exceed the voltage limit.
+            - Power consumption is minimized as part of the fitness evaluation.
+            - A cache is used to avoid redundant fitness evaluations for the same (I, N) values.
+        """
+
+        # Extract individual parameters
+        I, N = individual
+
+        # Use a cache to avoid redundant fitness evaluations
+        key = (I, N)
+
+        if key in self.fitness_cache:
+            return self.fitness_cache[key]
+
+        # Access the coil object stored in the class
+        coil = self.coil
+        coil.update_parameters(turns=N)
+        
+        # Compute total number of turns
+        N_total = np.sum(coil.N)
+
+        # Select appropriate AWG size based on the current requirement
+        selected_awg = select_awg(I, awg_data)
+
+        # Compute wire resistance based on selected AWG, total turns, and perimeter
+        R = resistance_coil(selected_awg, N_total, self.perimeter)
+     
+        # Compute voltage drop across the coil
+        V = I * R
+
+        # Compute the estimated magnetic field strength
+        B_x = self.slope * N_total * I
+
+        # Target magnetic field strength
+        target = self.desired_magField
+
+        # Apply penalty if the generated field is below the target
+        if (target - B_x) > 0:
+            penalty1 = 50000 + abs(target - B_x)  # Higher penalty for larger deviation
+        else:
+            penalty1 = 0
+
+        # Apply penalty if the voltage exceeds the limit
+        if (self.V_limit - V) < 0:
+            penalty2 = 50000 + abs(self.V_limit - V)  # Higher penalty for exceeding constraints
+        else:
+            penalty2 = 0
+
+        # Compute power consumption
+        power = V * I
+
+        # Total fitness value: penalized power consumption
+        result = (penalty1 + penalty2 + power + I,)
+
+        # Cache the computed fitness value to speed up future evaluations
+        self.fitness_cache[key] = result
+
+        return result
+
+    def mutate_individual(self, individual, mu, sigma, indpb):
+        if random.random() < indpb:
+            individual[0] += random.gauss(mu, sigma)
+        if random.random() < indpb:
+            individual[1] += random.gauss(mu, sigma)
+        return self.apply_constraints(individual),
+
+    def adaptive_mutate(self, individual, gen, mu):
+        """Mutación adaptativa con mayor exploración al inicio."""
+        mutation_rate = 0.5 * (1 - gen / self.gen)
+        sigma = 0.2 * (1 - gen / self.gen)
+        
+        if random.random() < mutation_rate:
+            individual[0] += random.gauss(mu, sigma)
+
+        if random.random() < mutation_rate:
+            individual[1] += random.gauss(mu, sigma)
+
+        return self.apply_constraints(individual),
+
+    def mate_individual(self, ind1, ind2): 
+        'With 50% of probability generates individuals'
+        if not self.fix_L:
+            if random.random() < 0.5:
+                ind1[0], ind2[0] = ind2[0], ind1[0]
+        if random.random() < 0.5:
+            ind1[1], ind2[1] = ind2[1], ind1[1]
+        self.apply_constraints(ind1)
+        self.apply_constraints(ind2)
+        return ind1, ind2
+
+    def long_jump_crossover(self, ind1, ind2):
+        """Cruce con exploración agresiva con mejor probabilidad de mezcla."""
+        
+        # Swapping genes with 25% probability
+        if random.random() < 0.25:
+            ind1[0], ind2[0] = ind2[0], ind1[0]
+        if random.random() < 0.25:
+            ind1[1], ind2[1] = ind2[1], ind1[1]
+
+        # Blended crossover with 50% probability
+        if random.random() < 0.5:
+            alpha = random.uniform(-0.5, 1.5)
+            ind1[0] = alpha * ind1[0] + (1 - alpha) * ind2[0]
+            ind2[0] = alpha * ind2[0] + (1 - alpha) * ind1[0]
+        
+        if random.random() < 0.5:
+            alpha = random.uniform(-0.5, 1.5)
+            ind1[1] = alpha * ind1[1] + (1 - alpha) * ind2[1]
+            ind2[1] = alpha * ind2[1] + (1 - alpha) * ind1[1]
+
+        self.apply_constraints(ind1)
+        self.apply_constraints(ind2)
+    
+        return ind1, ind2
+    
+    def run_ga(self, pop_size=None, cxpb=0.5, mutpb=None, ngen=None, initial_individual=None):
+        if pop_size is None:
+            pop_size = self.pop
+        if ngen is None:
+            ngen = self.gen
+        if mutpb is None:
+            mutpb = self.mut
+
+        # Generate initial population (reserve space for one extra individual)
+        pop = self.toolbox.population(n=pop_size - 1)
+
+        # Add the initial individual if provided
+        if initial_individual:
+            ind = creator.Individual(initial_individual)
+            ind.fitness.values = self.toolbox.evaluate(ind)  # Evaluate fitness
+            pop.append(ind)  # Insert into population
+
+        hof = tools.HallOfFame(1)
+        stats = tools.Statistics(lambda ind: ind.fitness.values)
+        stats.register("min", np.min)
+        stats.register("avg", np.mean)
+
+        pop, logbook = algorithms.eaSimple(pop, self.toolbox, cxpb=cxpb, mutpb=mutpb,
+                                        ngen=ngen, stats=stats, halloffame=hof, verbose=True)
+        return hof[0], logbook
+
+
+    def optimize(self):
+        best_solution, logbook = self.run_ga(initial_individual=[1.05, 0.59])
+        I_opt, N_opt = best_solution
+        print("\nOptimal Parameters Found:")
+        print(f"I (A): {I_opt:.4f} A")
+        print(f"N (-): {N_opt:.4f}")
+
+        selected_awg = select_awg(I_opt, awg_data)
+        R = resistance_coil(selected_awg, N_opt, self.perimeter)
+        V = I_opt*R
+        print(f"coil resistnace (ohm): {R:.4f} ohm")
+        print(f"V (v): {V:.4f} v")
+        return I_opt, N_opt
+    
 
 # Define the optimizer as a class:
 class HelmholtzOptimizer:
