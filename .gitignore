@@ -24,7 +24,7 @@ __pycache__/
 
 # Ignorar archivos de salida de Jupyter Notebook (exportados a otros formatos como HTML, PDF, etc.)
 *.html
-*.pdf
+#*.pdf
 
 # Ignorar entornos de Conda
 .conda/
