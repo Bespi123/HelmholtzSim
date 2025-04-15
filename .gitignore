@@ -29,3 +29,18 @@ __pycache__/
 # Ignorar entornos de Conda
 .conda/
 *.conda
+
+
+# Ignorar entornos de Conda dentro del proyecto
+/env/
+/venv/
+*.conda
+*.pkl
+*.pickle
+
+# Archivos de Conda
+conda-meta/
+pkgs/
+*.json
+*.yaml
+*.lock
