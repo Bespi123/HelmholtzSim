@@ -74,7 +74,7 @@ $$
 
 ### 🔍 Visual Representation
 
-![Discrete Biot–Savart illustration](fig/diagramasTesis-18.pdf)
+![Discrete Biot–Savart illustration](figs/fig1.pdf)
 
 *Diagram showing the discrete Biot–Savart approach with evaluation point $P$, current segment $\Delta \mathbf{L}$, and resulting magnetic field vector contributions.*
 
