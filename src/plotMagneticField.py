@@ -587,18 +587,30 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
     plt.show()
 
 
-def plot_mainAxis_field(x_coil_results_s, index='Bx'):
+def plot_mainAxis_field(x_coil_results_s, index='Bx', unit='T'):
     """
     Plots Bx vs X, Y, and Z for the main axes with a highlighted tolerance region.
 
     Parameters:
     - x_coil_results_s (DataFrame): Magnetic field data.
     - index (str): Magnetic field component to visualize ('Bx', 'By', 'Bz').
+    - unit (str): Unit for display ('T', 'uT', or 'G').
 
     Returns:
     - A figure with three subplots (Bx vs X, Y, and Z).
     """
     
+    # Conversion factors
+    unit_factors = {
+        'T': 1,
+        'uT': 1e6,
+        'G': 1e4
+    }
+    if unit not in unit_factors:
+        raise ValueError("Invalid unit. Choose from 'T', 'uT', or 'G'.")
+
+    scale = unit_factors[unit]
+
     # Compute the reference magnetic field at (X=0, Y=0, Z=0)
     reference_point = x_coil_results_s[
         (x_coil_results_s['X'] == 0) & 
@@ -631,10 +643,10 @@ def plot_mainAxis_field(x_coil_results_s, index='Bx'):
 
         # Ensure sorted order for all data
         x_values_full = np.sort(df[x_label].values)
-        bx_values_full = df[index].values[np.argsort(df[x_label].values)]
+        bx_values_full = df[index].values[np.argsort(df[x_label].values)]*scale
 
         x_values_filtered = np.sort(filtered_points[x_label].values) if not filtered_points.empty else []
-        bx_values_filtered = filtered_points[index].values[np.argsort(filtered_points[x_label].values)] if not filtered_points.empty else []
+        bx_values_filtered = filtered_points[index].values[np.argsort(filtered_points[x_label].values)]*scale if not filtered_points.empty else []
 
         # Plot full dataset
         ax.plot(x_values_full, bx_values_full, marker='o', linestyle='-', label='All Data')
@@ -644,7 +656,7 @@ def plot_mainAxis_field(x_coil_results_s, index='Bx'):
 
         # Set dynamic labels and title
         ax.set_xlabel(f"{x_label} (m)")
-        ax.set_ylabel(f"{index} (T)")
+        ax.set_ylabel(f"{index} ({unit})")
         ax.set_title(f"{index} vs {x_label}")
         ax.legend()
         ax.grid(True)
