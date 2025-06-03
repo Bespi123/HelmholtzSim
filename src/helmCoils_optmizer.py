@@ -349,7 +349,7 @@ class Source_optimizer:
         return self.apply_constraints(individual),
 
     def adaptive_mutate(self, individual, gen, mu):
-        """Mutación adaptativa con mayor exploración al inicio."""
+        'Adaptive mutation with increased exploration at the beginning.'
         mutation_rate = 0.5 * (1 - gen / self.gen)
         sigma = 0.2 * (1 - gen / self.gen)
         
@@ -373,8 +373,7 @@ class Source_optimizer:
         return ind1, ind2
 
     def long_jump_crossover(self, ind1, ind2):
-        """Cruce con exploración agresiva con mejor probabilidad de mezcla."""
-        
+        'Crossover with aggressive exploration and better mixing probability.'        
         # Swapping genes with 25% probability
         if random.random() < 0.25:
             ind1[0], ind2[0] = ind2[0], ind1[0]
@@ -442,7 +441,7 @@ class Source_optimizer:
 # Define the optimizer as a class:
 class HelmholtzOptimizer:
     def __init__(self, desired_size, coil, fun, fix_L=False, fixed_L_value=None,
-                 grid_length_size=0.01, population = 20, generations = 50, mutation = 0.2):
+                 grid_length_size=0.01, population = 20, generations = 50, mutation = 0.2, penalty = 5000, initial_values=[1.05, 0.59]):
         """
         Parameters:
           desired_size: base size parameter for coil dimensions.
@@ -462,6 +461,9 @@ class HelmholtzOptimizer:
         self.pop = population
         self.gen = generations
         self.mut = mutation
+        self.pen = penalty
+        self.init_val = initial_values
+
         # Set ranges for L and d based on fix_L flag.
         if self.fix_L:
             if self.fixed_L_value is None:
@@ -562,7 +564,7 @@ class HelmholtzOptimizer:
             is_contiguous = False
 
         if not is_contiguous:
-            result = (5000,)  # Penalty value
+            result = (self.pen,)  # Penalty value
         else:
             a = abs(filtered_points['X'].max() - filtered_points['X'].min())
             result = (self.desired_size / 2 - a,)
@@ -627,7 +629,7 @@ class HelmholtzOptimizer:
         pop = self.toolbox.population(n=pop_size - 1)
 
         # Add the initial individual if provided
-        if initial_individual:
+        if initial_individual is not None:
             ind = creator.Individual(initial_individual)
             ind.fitness.values = self.toolbox.evaluate(ind)  # Evaluate fitness
             pop.append(ind)  # Insert into population
@@ -639,13 +641,19 @@ class HelmholtzOptimizer:
 
         pop, logbook = algorithms.eaSimple(pop, self.toolbox, cxpb=cxpb, mutpb=mutpb,
                                         ngen=ngen, stats=stats, halloffame=hof, verbose=True)
-        return hof[0], logbook
+        
+        best_individual = hof[0]
+        min_error_global = best_individual.fitness.values[0]
+        print("Minimum error from best individual:", min_error_global)
+
+        return best_individual, min_error_global, logbook
 
 
     def optimize(self):
-        best_solution, logbook = self.run_ga(initial_individual=[1.05, 0.59])
+        best_solution, min_error_global, logbook = self.run_ga(initial_individual=self.init_val)
         L_opt, d_opt = best_solution
         print("\nOptimal Parameters Found:")
         print(f"L (length): {L_opt:.4f} m")
         print(f"d (spacing): {d_opt:.4f} m")
-        return L_opt, d_opt
+        print(f"Min error): {min_error_global} m")
+        return L_opt, d_opt, min_error_global, logbook 
