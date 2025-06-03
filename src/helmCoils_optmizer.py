@@ -69,7 +69,8 @@ def resistance_coil(awg_size, N, L):
     """
     info = awg_data.get(awg_size)
     if info is None:
-        raise ValueError("AWG gauge not available.")
+        return None
+        #raise ValueError("AWG gauge not available.")
     length = L * N
     area = info['area_mm2'] * 1e-6
     return RHO * (length / area)
@@ -190,7 +191,7 @@ class Source_optimizer:
         fitness_cache (dict): A local cache to store fitness evaluations for efficiency.
     """
     def __init__(self, desired_magField, coil, spires, fixed_V_limit=None, max_N = 30,
-                 max_I = 10, population = 20, generations = 50, mutation = 0.2):
+                 max_I = 10, population = 20, generations = 50, mutation = 0.2,  penalty = 5000, initial_values=[1.05, 0.59]):
         """
         Initialize the Source_optimizer with the desired magnetic field, coil, and optimization parameters.
 
@@ -214,6 +215,8 @@ class Source_optimizer:
         self.pop = population
         self.gen = generations
         self.mut = mutation
+        self.penalty = penalty
+        self.initial = initial_values
 
         # Calculate the total perimeter of the coil and the slope of B_x vs. I
         self.perimeter = np.sum(calculate_loop_length(spires))
@@ -308,36 +311,39 @@ class Source_optimizer:
 
         # Compute wire resistance based on selected AWG, total turns, and perimeter
         R = resistance_coil(selected_awg, N_total, self.perimeter)
-     
-        # Compute voltage drop across the coil
-        V = I * R
 
-        # Compute the estimated magnetic field strength
-        B_x = self.slope * N_total * I
-
-        # Target magnetic field strength
-        target = self.desired_magField
-
-        # Apply penalty if the generated field is below the target
-        if (target - B_x) > 0:
-            penalty1 = 50000 + abs(target - B_x)  # Higher penalty for larger deviation
+        if R is None:
+            result = (2*self.penalty,)
         else:
-            penalty1 = 0
+            # Compute voltage drop across the coil
+            V = I * R
 
-        # Apply penalty if the voltage exceeds the limit
-        if (self.V_limit - V) < 0:
-            penalty2 = 50000 + abs(self.V_limit - V)  # Higher penalty for exceeding constraints
-        else:
-            penalty2 = 0
+            # Compute the estimated magnetic field strength
+            B_x = self.slope * N_total * I
 
-        # Compute power consumption
-        power = V * I
+            # Target magnetic field strength
+            target = self.desired_magField
 
-        # Total fitness value: penalized power consumption
-        result = (penalty1 + penalty2 + power + I,)
+            # Apply penalty if the generated field is below the target
+            if (target - B_x) > 0:
+                penalty1 = self.penalty + abs(target - B_x)  # Higher penalty for larger deviation
+            else:
+                penalty1 = 0
 
-        # Cache the computed fitness value to speed up future evaluations
-        self.fitness_cache[key] = result
+            # Apply penalty if the voltage exceeds the limit
+            if (self.V_limit - V) < 0:
+                penalty2 = self.penalty + abs(self.V_limit - V)  # Higher penalty for exceeding constraints
+            else:
+                penalty2 = 0
+
+            # Compute power consumption
+            power = V * I
+
+            # Total fitness value: penalized power consumption
+            result = (penalty1 + penalty2 + power + I,)
+
+            # Cache the computed fitness value to speed up future evaluations
+            self.fitness_cache[key] = result
 
         return result
 
@@ -408,7 +414,7 @@ class Source_optimizer:
         pop = self.toolbox.population(n=pop_size - 1)
 
         # Add the initial individual if provided
-        if initial_individual:
+        if initial_individual is not None:
             ind = creator.Individual(initial_individual)
             ind.fitness.values = self.toolbox.evaluate(ind)  # Evaluate fitness
             pop.append(ind)  # Insert into population
@@ -420,22 +426,27 @@ class Source_optimizer:
 
         pop, logbook = algorithms.eaSimple(pop, self.toolbox, cxpb=cxpb, mutpb=mutpb,
                                         ngen=ngen, stats=stats, halloffame=hof, verbose=True)
-        return hof[0], logbook
+        best_individual = hof[0]
+        min_error_global = best_individual.fitness.values[0]
+        
+        return best_individual, min_error_global, logbook
 
 
     def optimize(self):
-        best_solution, logbook = self.run_ga(initial_individual=[1.05, 0.59])
+        best_solution, min_error_global, logbook = self.run_ga(initial_individual=self.initial)
         I_opt, N_opt = best_solution
         print("\nOptimal Parameters Found:")
         print(f"I (A): {I_opt:.4f} A")
         print(f"N (-): {N_opt:.4f}")
+        print(f"Min error: {min_error_global} m")
 
         selected_awg = select_awg(I_opt, awg_data)
         R = resistance_coil(selected_awg, N_opt, self.perimeter)
         V = I_opt*R
-        print(f"coil resistnace (ohm): {R:.4f} ohm")
+        print(f"Recomended AWG gaugage: {selected_awg}")
+        print(f"coil resistace (ohm): {R:.4f} ohm")
         print(f"V (v): {V:.4f} v")
-        return I_opt, N_opt
+        return I_opt, N_opt, min_error_global, logbook
     
 
 # Define the optimizer as a class:
@@ -644,7 +655,7 @@ class HelmholtzOptimizer:
         
         best_individual = hof[0]
         min_error_global = best_individual.fitness.values[0]
-        print("Minimum error from best individual:", min_error_global)
+        #print("Minimum error from best individual:", min_error_global)
 
         return best_individual, min_error_global, logbook
 
