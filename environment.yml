@@ -89,6 +89,7 @@ dependencies:
   - matplotlib=3.9.2=py39h06a4308_1
   - matplotlib-base=3.9.2=py39hbfdbfaf_1
   - matplotlib-inline=0.1.7=pyhd8ed1ab_1
+  - memory_profiler
   - narwhals=1.32.0=pyhd8ed1ab_0
   - ncurses=6.4=h6a678d5_0
   - nest-asyncio=1.6.0=pyhd8ed1ab_1
