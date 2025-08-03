@@ -221,7 +221,7 @@ class CoilParameters:
             r = self.L[i] / 2  # Radio del círculo
 
             # Generar ángulos para una circunferencia completa (espiral continua)
-            theta_vals = np.linspace(0, 2 * np.pi, 4 * num_seg, endpoint=False)  
+            theta_vals = np.linspace(2 * np.pi, 0, 4 * num_seg, endpoint=False)  
 
             # Parametrización de la espiral
             x_coords = np.zeros(4 * num_seg)  # x permanece constante
