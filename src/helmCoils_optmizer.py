@@ -146,12 +146,13 @@ def get_slope(coil, spires):
 
     # Generate a range of points in space for the simulation
     # Here, X, Y, Z are all set to [0, 0], meaning the simulation is focused on the origin.
-    X, Y, Z = sim.generate_range([0, 0], [0, 0], [0, 0], step_size_x=0.01)
+    X, Y, Z = sim.generate_range([0, 0], [0, 0], [0, 0], step_size_x = 0.01)
+    coil.update_parameters(turns=1)
 
     # Compute slope for B_x estimation by varying the current (I)
-    for I in range(1, 5):
+    for I in range(1, 20):
         # Update the coil parameters with the current value and a fixed number of turns
-        coil.update_parameters(turns=1, current=I)
+        coil.update_parameters(current=I)
         # Run the coil simulation in parallel
         results = sim.coil_simulation_parallel(
             X, Y, Z, coil, spires, batch_size = 120, enable_progress_bar=False, n=150
@@ -164,8 +165,9 @@ def get_slope(coil, spires):
 
     # Perform a linear fit to the data: B_x = slope * I + intercept
     # The slope represents the sensitivity of the magnetic field to the current
-    slope, intercept = np.polyfit(data[:, 0], np.sum(coil.N) * data[:, 1], 1)
-
+    slope, intercept = np.polyfit(data[:, 0], data[:, 1], 1)
+    #slope, intercept = np.polyfit(data[:, 0], np.sum(coil.N) * data[:, 1], 1)
+    print(f"Slope of B_x vs I: {slope} T/A")
     # Return the slope
     return slope    
 
@@ -319,7 +321,7 @@ class Source_optimizer:
             V = I * R
 
             # Compute the estimated magnetic field strength
-            B_x = self.slope * N_total * I
+            B_x = self.slope * N_total/2 * I
 
             # Target magnetic field strength
             target = self.desired_magField
