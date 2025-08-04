@@ -503,6 +503,8 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
 
     # Generate multiple contour levels for field variations
     range_values = np.sort(np.array([lower_bound_tol, upper_bound_tol]))
+    bound_values = np.sort(np.array([lower_bound_1, upper_bound_1]))
+
     print('reference_value: ', reference_value)
 
     # Define the three planes
@@ -539,10 +541,9 @@ def plot_2d_magnetic_field(x_coil_results_s, spires, index='Bx', use_fixed_zaxis
         img = ax.imshow(
             B_field, cmap='viridis', origin='lower',
             extent=[y_vals.min(), y_vals.max(), x_vals.min(), x_vals.max()],
-            vmin=lower_bound_1,  # Fixed min color scale
-            vmax=upper_bound_1   # Fixed max color scale
+            vmin=bound_values[0],  # Fixed min color scale
+            vmax=bound_values[1]   # Fixed max color scale
         )
-
         # Highlight the tolerance region using `contourf()`
         if reference_value != 0:
             ax.contourf(
