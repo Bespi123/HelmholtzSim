@@ -682,11 +682,12 @@ def plot_magnetic_field_directions(x_coil_results_s, spires):
     # Define the two planes with their respective magnetic field components
     planes = [
         ('XY', 'X', 'Y', x_coil_results_s[x_coil_results_s['Z'] == 0], 'Bx', 'By'),
+        ('YZ', 'Y', 'Z', x_coil_results_s[x_coil_results_s['X'] == 0], 'By', 'Bz'),
         ('XZ', 'X', 'Z', x_coil_results_s[x_coil_results_s['Y'] == 0], 'Bx', 'Bz')
     ]
 
     # Create figure with two subplots
-    fig, axes = plt.subplots(1, 2, figsize=(18, 6), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(24, 7), constrained_layout=True)
 
     for ax, (plane_name, x_label, y_label, df, field_x, field_y) in zip(axes, planes):
         # Create a 2D matrix (pivot table) for the quiver plot
@@ -717,6 +718,8 @@ def plot_magnetic_field_directions(x_coil_results_s, spires):
         # Plot spires for the current plane
         if plane_name == 'XY':
             spire1_x, spire1_y = spire_list[:, 0, :], spire_list[:, 1, :]
+        elif plane_name == 'YZ':
+            spire1_x, spire1_y = spire_list[:, 1, :], spire_list[:, 2, :]
         elif plane_name == 'XZ':
             spire1_x, spire1_y = spire_list[:, 0, :], spire_list[:, 2, :]
 
